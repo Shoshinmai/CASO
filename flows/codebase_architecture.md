@@ -1,7 +1,5 @@
 ### **Phase 1 codebase architecture:**
 
-
-
 caso/
 
 │
@@ -20,7 +18,7 @@ caso/
 
 ├── state/
 
-│   ├── state\_manager.py       # Collect system state (active window, apps)
+│   ├── statemanager.py       # Collect system state (active window, apps)
 
 │   └── models.py              # State data structure
 
@@ -28,7 +26,7 @@ caso/
 
 ├── llm/
 
-│   ├── llm\_client.py          # Wrapper for LLM calls
+│   ├── llmclient.py          # Wrapper for LLM calls
 
 │   ├── prompts.py             # Prompt templates (intent, planner, etc.)
 
@@ -38,9 +36,9 @@ caso/
 
 ├── intent/
 
-│   ├── intent\_extractor.py    # Extract intent + slots
+│   ├── intentextractor.py    # Extract intent + slots
 
-│   └── slot\_schema.py         # Define required fields per intent
+│   └── slotschema.py         # Define required fields per intent
 
 │
 
@@ -48,7 +46,7 @@ caso/
 
 │   ├── clarifier.py           # Handles missing info logic
 
-│   └── conversation\_state.py  # Tracks pending questions / context
+│   └── conversationstate.py  # Tracks pending questions / context
 
 │
 
@@ -56,7 +54,7 @@ caso/
 
 │   ├── planner.py             # Decide: macro vs tool
 
-│   └── action\_schema.py       # Standard action format
+│   └── actionschema.py       # Standard action format
 
 │
 
@@ -64,33 +62,33 @@ caso/
 
 │   ├── executor.py            # Executes actions
 
-│   ├── tool\_registry.py       # Available tools
+│   ├── toolregistry.py       # Available tools
 
 │   └── tools/
 
-│       ├── open\_app.py
+│       ├── openapp.py
 
-│       ├── type\_text.py
+│       ├── typetext.py
 
-│       ├── press\_key.py
+│       ├── presskey.py
 
-│       └── open\_url.py
+│       └── openurl.py
 
 │
 
 ├── macros/
 
-│   ├── macro\_registry.py      # List of macros
+│   ├── macroregistry.py      # List of macros
 
-│   └── basic\_macros.py        # e.g., open\_youtube, search\_google
+│   └── basicmacros.py        # e.g., openyoutube, searchgoogle
 
 │
 
 ├── feedback/
 
-│   ├── feedback\_manager.py    # Success / failure handling
+│   ├── feedbackmanager.py    # Success / failure handling
 
-│   └── error\_handler.py       # Retry / fallback logic
+│   └── errorhandler.py       # Retry / fallback logic
 
 │
 
@@ -105,4 +103,3 @@ caso/
 │
 
 └── tests/                     # (optional for **now)**
-

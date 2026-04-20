@@ -5,6 +5,8 @@ def open_app(app: str):
     try:
         if app.lower() == "chrome":
             sp.Popen("start chrome", shell=True)
+        elif app.lower() == "explorer"or app.lower() == "file explorer":
+            sp.Popen("explorer", shell=True)
         elif app.lower() == "notepad":
             sp.Popen("notepad.exe")
         else:

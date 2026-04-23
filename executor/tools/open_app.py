@@ -4,7 +4,8 @@ import os
 def open_app(app: str):
     try:
         if app.lower() == "chrome":
-            sp.Popen("start chrome", shell=True)
+            # sp.Popen("start chrome", shell=True)
+            sp.Popen('start "" /MAX "chrome"', shell=True)
         elif app.lower() == "explorer"or app.lower() == "file explorer":
             sp.Popen("explorer", shell=True)
         elif app.lower() == "notepad":

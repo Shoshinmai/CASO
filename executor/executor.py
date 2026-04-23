@@ -1,8 +1,9 @@
 from executor.tool_registry import ACTION_REGISTRY
 import time
 
+
 class Executor:
-    def __init__(self, delay: float = 1.0):
+    def __init__(self, delay: float = 1.5):
         self.registry = ACTION_REGISTRY
         self.delay = delay
 
@@ -20,17 +21,14 @@ class Executor:
         func = self.registry[action_name]
 
         # Remove 'action' key before passing args
-        params = {k: v for k, v in action.items() if k != "action"}
+        # params = {k: v for k, v in action.items() if k != "action"}
+        params = {k: v for k, v in action.items() if k not in ["action", "intent"]}
 
         try:
             func(**params)
             return {"status": "success", "action": action_name}
         except Exception as e:
-            return {
-                "status": "error",
-                "action": action_name,
-                "message": str(e)
-            }
+            return {"status": "error", "action": action_name, "message": str(e)}
 
     def run(self, plan: list):
         results = []

@@ -1,30 +1,22 @@
-# Clarification loop flow:
+# Clarification Loop Flow 
 
 
 
-##### User Input
+##### Interpreter (ambiguity)
 
-##### &#x20;  ↓
+##### ↓
 
-##### Intent + Slots
+##### Planner
 
-##### &#x20;  ↓
+##### ↓
 
-##### Check Missing
+##### Validator
 
-##### &#x20;  ↓
+##### ↓
 
-##### IF missing:
+##### Critic
 
-##### &#x20;  → Ask user
+##### ↓
 
-##### &#x20;  → Wait for response
-
-##### &#x20;  → Fill slot
-
-##### &#x20;  → Continue
-
-##### ELSE:
-
-##### &#x20;  → Execute
+##### Executor
 

@@ -47,6 +47,9 @@
 #Clarification Loop and state awareness testing
 from executor.executor import Executor
 from state.state_manager import get_system_state
+from core.kill_switch import (
+   start_kill_switch
+)
 
 from classifier.ambiguity_checker import (
     check_ambiguity
@@ -74,6 +77,12 @@ def main():
     executor=Executor(delay=1.5)
 
     state=ConversationState()
+    
+    start_kill_switch()
+
+    print(
+    "Kill switch: Ctrl+Shift+X"
+    )
 
 
     while True:

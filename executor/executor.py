@@ -1,5 +1,6 @@
 from executor.tool_registry import ACTION_REGISTRY
 import time
+import core.control_flags as flags
 
 
 class Executor:
@@ -31,9 +32,15 @@ class Executor:
             return {"status": "error", "action": action_name, "message": str(e)}
 
     def run(self, plan: list):
+        flags.STOP_EXECUTION=False
         results = []
 
         for step in plan:
+            if flags.STOP_EXECUTION:
+                print(
+                "[EXECUTION ABORTED]"
+                )
+                return
             result = self.execute_step(step)
             results.append(result)
 
@@ -42,7 +49,12 @@ class Executor:
             if result["status"] == "error":
                 print("[EXECUTOR] Stopping due to failure.")
                 break
-
+            
+            if flags.STOP_EXECUTION:
+                print(
+                "[EXECUTION ABORTED]"
+                )
+                return
             time.sleep(self.delay)
 
         return results

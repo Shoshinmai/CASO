@@ -44,8 +44,9 @@
 #             print(f"[ERROR] {str(e)}")
 
 
-#Clarification Loop testing
+#Clarification Loop and state awareness testing
 from executor.executor import Executor
+from state.state_manager import get_system_state
 
 from classifier.ambiguity_checker import (
     check_ambiguity
@@ -179,8 +180,16 @@ def main():
             # ------------------------
             # planner
             # ------------------------
+            system_state=get_system_state()
+
+            print(
+            "\n[SYSTEM STATE]"
+            )
+            print(system_state)
+
             plan=generate_plan(
-                user_input
+            user_input,
+            system_state
             )
 
             print("\n[PLAN]")
@@ -229,6 +238,10 @@ def main():
                 )
 
             else:
+                state.set_pending(
+                    user_input,
+                    critic_result
+                )
                 print(
                  "Critic rejected plan."
                 )

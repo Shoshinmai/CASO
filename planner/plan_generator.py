@@ -1,32 +1,102 @@
-from llm.llmclient import call_gemini, call_groq
-from llm.parser import parse_llm_output
+# from llm.llmclient import call_gemini, call_groq
+# from llm.parser import parse_llm_output
+
+import json
+
+from llm.llmclient import call_groq
 from llm.prompts import SYSTEM_PROMPT
 
 
 def generate_plan(
     user_input,
-    system_state
+    system_state,
+    critic_feedback=None,
+    previous_plan=None
 ):
 
-    prompt=f"""
-{SYSTEM_PROMPT}
+    revise_section = ""
 
-Current System State:
-{system_state}
+    # 🔥 include revise context ONLY if present
+    if critic_feedback and previous_plan:
 
-User Request:
-{user_input}
+        revise_section = f"""
+
+--------------------------------
+PREVIOUS PLAN
+--------------------------------
+{json.dumps(previous_plan, indent=2)}
+
+--------------------------------
+CRITIC FEEDBACK
+--------------------------------
+{critic_feedback}
+
+Improve the previous plan using the critic feedback.
+Do NOT repeat the same mistakes.
 """
 
-    raw=call_groq(
-       prompt
-    )
+    prompt = f"""
+{SYSTEM_PROMPT}
 
-    print(
-      "\n[LLM RAW PLAN]"
-    )
+--------------------------------
+SYSTEM STATE
+--------------------------------
+Active Window: {system_state.get("active_window")}
+
+Running Applications:
+{system_state.get("running_apps")}
+
+
+--------------------------------
+USER REQUEST
+--------------------------------
+{user_input}
+
+{revise_section}
+
+
+--------------------------------
+STRICT OUTPUT FORMAT
+--------------------------------
+Return ONLY valid JSON list.
+
+Example:
+[
+  {{
+    "action": "open_app",
+    "app": "chrome"
+  }}
+]
+
+No markdown.
+No explanation.
+"""
+
+    raw = call_groq(prompt)
+
+    print("\n[LLM RAW PLAN]")
     print(raw)
 
-    return parse_llm_output(
-        raw
-    )
+    # 🔥 strict extraction
+    try:
+
+        start = raw.find("[")
+        end = raw.rfind("]") + 1
+
+        json_str = raw[start:end]
+
+        plan = json.loads(json_str)
+
+        if not isinstance(plan, list):
+            raise ValueError(
+                "Plan is not a list"
+            )
+
+        return plan
+
+    except Exception as e:
+
+        print("\n[PLAN PARSE ERROR]")
+        print(e)
+
+        return []

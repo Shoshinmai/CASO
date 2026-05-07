@@ -25,7 +25,7 @@ def call_gemini(prompt: str) -> str:
 
 def call_groq(prompt: str) -> str:
     response = client2.chat.completions.create(
-        model = "groq/compound",
+        model = "groq/compound-mini",
         messages=[
         {
             "role": "user",

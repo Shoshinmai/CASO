@@ -272,7 +272,7 @@
 from graph.graph_builder import graph
 from langgraph.types import Command
 
-config = {"configurable": {"thread_id": "caso"}}
+config = {"configurable": {"thread_id": "caso-1"}}
 
 state = {}
 

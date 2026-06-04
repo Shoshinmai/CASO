@@ -1,8 +1,13 @@
 .env
 executor/__pycache__
+executor/tools/__pycache__
 llm/__pycache__
 critic/__pycache__
 classifier/__pycache__
 clarification/__pycache__
 planner/__pycache__
 core/__pycache__
+graph/__pycache__
+vectorstore
+data.docx
+report.txt

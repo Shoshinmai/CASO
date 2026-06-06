@@ -1,6 +1,6 @@
 from langgraph.graph import StateGraph, END
 from graph.states import AgentState
-from graph.wrappers import state_node, ambiguity_node, planner_node, validator_node, critic_node, executor_node
+from graph.wrappers import state_node, ambiguity_node, planner_node, validator_node, critic_node, executor_node,tool_router_node
 from graph.routers import route_after_critic, route_after_validator
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
@@ -15,6 +15,7 @@ builder.add_node("planner", planner_node)
 builder.add_node("validator", validator_node)
 builder.add_node("critic", critic_node)
 builder.add_node("executor", executor_node)
+builder.add_node( "tool_router", tool_router_node)
 
 builder.set_entry_point("state")
 
@@ -37,9 +38,10 @@ builder.add_conditional_edges(
     {
         "ambiguity": "ambiguity",
         "planner": "planner",
-        "executor": "executor"
+        "tool_router": "tool_router"
     }
 )
+builder.add_edge("tool_router", "executor")
 
 builder.add_edge("executor", END)
 

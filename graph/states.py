@@ -9,5 +9,6 @@ class AgentState(TypedDict):
     validation_error: Optional[str]
     critic_decision: Optional[str]
     critic_feedback: Optional[str]
+    ambiguity_decision: Optional[str]
     # optional tracking
     revise_count: int

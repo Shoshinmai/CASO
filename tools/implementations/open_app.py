@@ -6,12 +6,23 @@ class OpenAppTool(BaseTool):
     name = "desktop.open_app"
 
     description = (
-        "Open an application or focus it if already running."
+        "Open an application if not running. "
+        "Focus it if already running."
     )
 
     parameters = {
         "app": "string"
     }
+
+    examples = [
+        {
+            "tool":
+            "desktop.open_app",
+
+            "app":
+            "chrome"
+        }
+    ]
 
     def execute(
         self,
@@ -19,7 +30,7 @@ class OpenAppTool(BaseTool):
         system_state
     ):
 
-        app = params["app"].lower()
+        app = params["app"]
 
         running_apps = [
             a.lower()
@@ -29,18 +40,24 @@ class OpenAppTool(BaseTool):
             )
         ]
 
-        if app in running_apps:
+        if app.lower() in running_apps:
 
             return [
                 {
-                    "action": "focus_app",
-                    "app": app
+                    "action":
+                    "focus_app",
+
+                    "app":
+                    app
                 }
             ]
 
         return [
             {
-                "action": "open_app",
-                "app": app
+                "action":
+                "open_app",
+
+                "app":
+                app
             }
         ]

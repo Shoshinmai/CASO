@@ -7,7 +7,7 @@ def route_after_critic(state):
     if decision == "RETRY":
         return "ambiguity"
 
-    return "executor"
+    return "tool_router"
 
 def route_after_validator(state):
     return "invalid" if state["validation_error"] else "critic"

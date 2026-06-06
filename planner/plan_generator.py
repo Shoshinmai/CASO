@@ -4,15 +4,10 @@
 import json
 
 from llm.llmclient import call_groq
-from llm.prompts import SYSTEM_PROMPT
+from planner.prompt_builder import build_planner_prompt
 
 
-def generate_plan(
-    user_input,
-    system_state,
-    critic_feedback=None,
-    previous_plan=None
-):
+def generate_plan(user_input, system_state, critic_feedback=None, previous_plan=None):
 
     revise_section = ""
 
@@ -35,17 +30,8 @@ Improve the previous plan using the critic feedback.
 Do NOT repeat the same mistakes.
 """
 
-    prompt = f"""
-{SYSTEM_PROMPT}
-
---------------------------------
-SYSTEM STATE
---------------------------------
-Active Window: {system_state.get("active_window")}
-
-Running Applications:
-{system_state.get("running_apps")}
-
+    prompt = build_planner_prompt(system_state)
+    prompt += f"""
 
 --------------------------------
 USER REQUEST
@@ -54,17 +40,25 @@ USER REQUEST
 
 {revise_section}
 
-
 --------------------------------
 STRICT OUTPUT FORMAT
 --------------------------------
+
 Return ONLY valid JSON list.
 
-Example:
+Examples:
+
 [
   {{
-    "action": "open_app",
-    "app": "chrome"
+    "tool":"desktop.open_app",
+    "app":"chrome"
+  }}
+]
+
+[
+  {{
+    "action":"focus_app",
+    "app":"chrome"
   }}
 ]
 
@@ -88,9 +82,7 @@ No explanation.
         plan = json.loads(json_str)
 
         if not isinstance(plan, list):
-            raise ValueError(
-                "Plan is not a list"
-            )
+            raise ValueError("Plan is not a list")
 
         return plan
 

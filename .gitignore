@@ -11,3 +11,5 @@ graph/__pycache__
 vectorstore
 data.docx
 report.txt
+tools/__pycache__/
+tools/implementations/__pycache__/

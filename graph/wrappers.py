@@ -7,6 +7,7 @@ from planner.validator import validate_plan
 from critic.reviewer import review_plan
 from executor.executor import Executor
 from clarification.resume_handler import merge_clarification
+from tools.router import execute_tool
 
 def state_node(state: AgentState):
     return {
@@ -28,9 +29,10 @@ def ambiguity_node(state: AgentState):
             answer
         )
 
-        return {"user_input": merged}
+        return {"user_input": merged, "ambiguity_decision": question}
+    else:
+        return {"ambiguity_decision": "CLEAR"}
 
-    return state
 
 def planner_node(state: AgentState):
 
@@ -127,6 +129,30 @@ def critic_node(state: AgentState):
     return {
         "critic_decision": "EXECUTE"
     }
+    
 def executor_node(state: AgentState):
     result = Executor().run(state["plan"])
     return {"execution_result": result}
+
+def tool_router_node(state):
+
+    expanded_plan = []
+
+    for step in state["plan"]:
+
+        if "tool" not in step:
+
+            expanded_plan.append(step)
+            continue
+
+        actions = execute_tool(
+            tool_name=step["tool"],
+            params=step,
+            system_state=state["system_state"]
+        )
+
+        expanded_plan.extend(actions)
+
+    return {
+        "plan": expanded_plan
+    }

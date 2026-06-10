@@ -3,7 +3,7 @@
 
 import json
 
-from llm.llmclient import call_groq
+from llm.llmclient import call_groq, call_ollama
 from planner.prompt_builder import build_planner_prompt
 
 
@@ -66,6 +66,7 @@ No markdown.
 No explanation.
 """
 
+    # raw = call_ollama(prompt, "qwen3:8b")
     raw = call_groq(prompt)
 
     print("\n[LLM RAW PLAN]")

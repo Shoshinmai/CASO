@@ -1,4 +1,4 @@
-from llm.llmclient import call_groq
+from llm.llmclient import call_groq, call_ollama
 from llm.prompts import AMBIGUITY_PROMPT
 
 def check_ambiguity(user_input):
@@ -10,4 +10,5 @@ User:
 {user_input}
 """
 
-    return call_groq(prompt).strip()
+    return call_ollama(prompt, "qwen2.5:7b-instruct-q3_K_M").strip()
+    # return call_groq(prompt).strip()

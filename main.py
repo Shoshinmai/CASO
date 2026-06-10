@@ -273,7 +273,6 @@ from graph.graph_builder import graph
 from langgraph.types import Command
 
 config = {"configurable": {"thread_id": "caso-3"}}
-graph.checkpointer.delete_thread(thread_id="caso-3")
 state = {}
 
 
@@ -302,4 +301,5 @@ while True:
 
     print("\n[DONE]")
     print(result)
+    graph.checkpointer.delete_thread(thread_id="caso-3")
     state = {}

@@ -1,4 +1,4 @@
-from llm.llmclient import call_groq
+from llm.llmclient import call_groq, call_ollama
 from llm.prompts import MERGE_PROMPT
 
 
@@ -13,6 +13,7 @@ def merge_clarification(
         answer=answer
     )
 
-    response = call_groq(prompt)
+    # response = call_groq(prompt)
+    response = call_ollama(prompt, "phi4-mini:latest")
 
     return response.strip()

@@ -44,7 +44,7 @@ def review_plan(user_input, plan):
     # print(plan)
     prompt = build_critic_prompt(user_input, plan)
 
-    response = call_ollama(prompt, "qwen2.5:7b-instruct-q3_K_M").strip()
+    response = call_ollama(prompt, "freehuntx/qwen3-coder:8b").strip()
     # response = call_groq(prompt).strip()
 
     print("\n[CRITIC RAW]")

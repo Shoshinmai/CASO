@@ -5,6 +5,7 @@ from groq import Groq
 from langchain_core.messages import HumanMessage
 from langchain_ollama import ChatOllama
 from langchain_groq import ChatGroq
+import sys
 
 # from llm import prompts
 
@@ -38,18 +39,11 @@ def call_groq(prompt: str) -> str:
 
 def call_ollama(prompt: str, model: str) -> str:
     
-#     llm = ChatOllama(
-#     model="llama3.2:3b",      # Drops neatly into ~2.5GB VRAM
-#     temperature=0,            # Enforces strict, deterministic routing logic
-#     num_ctx=4000,             # Keeps context small to save VRAM memory allocation
-#     # num_ctx=2048,             # Keeps context small to save VRAM memory allocation
-#     num_gpu=99,                # Forces Ollama to prioritize your RTX 3050 GPU layers
-#     # format="json",
-#     low_vram=True,
-#     keep_alive=0
-# )
     llm = ChatOllama(
-    model=model,      
+    model=model, 
+    # model_kwargs={
+    #     "think": False
+    # },     
     temperature=0.0,
     num_ctx=16384,    
     num_predict=1024,
@@ -57,6 +51,7 @@ def call_ollama(prompt: str, model: str) -> str:
     low_vram=True,           # Enhances context scaling algorithms for low-VRAM machines
     keep_alive=0
 )
+
     res = llm.invoke(prompt)
     res.pretty_print()
     return res.content

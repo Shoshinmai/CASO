@@ -36,6 +36,7 @@ Do NOT repeat the same mistakes.
 --------------------------------
 USER REQUEST
 --------------------------------
+/no_think
 {user_input}
 
 {revise_section}
@@ -65,9 +66,9 @@ Examples:
 No markdown.
 No explanation.
 """
-
-    # raw = call_ollama(prompt, "qwen3:8b")
-    raw = call_groq(prompt)
+    print("\n[PLANNER]")
+    raw = call_ollama(prompt, "freehuntx/qwen3-coder:8b")
+    # raw = call_groq(prompt)
 
     print("\n[LLM RAW PLAN]")
     print(raw)

@@ -7,6 +7,11 @@ classifier/__pycache__
 clarification/__pycache__
 planner/__pycache__
 core/__pycache__
+state/__pycache__
+agents/terminal/__pycache__
+agents/terminal/nodes/__pycache__
+agents/terminal/prompts/__pycache__
+agents/terminal/router/__pycache__
 graph/__pycache__
 vectorstore
 data.docx

@@ -1,4 +1,5 @@
 BASE_SYSTEM_PROMPT = """
+/no_think
 You are CASO's Planning Agent.
 
 Your job is to convert a user request into a SAFE executable JSON plan.
@@ -71,6 +72,11 @@ AVAILABLE TOOLS
 --------------------------------------------------
 PLANNING RULES
 --------------------------------------------------
+Reasoning budget: LOW.
+
+Generate the first valid plan.
+Do not analyze alternatives.
+Do not explain decisions.
 
 1. Return ONLY JSON.
 
@@ -146,6 +152,8 @@ No comments.
 """
 
 CRITIC_PROMPT = """
+Reasoning budget: MEDIUM.
+
 You are a critical reviewer for an AI system controller.
 
 Your job is to evaluate whether the generated execution plan is:

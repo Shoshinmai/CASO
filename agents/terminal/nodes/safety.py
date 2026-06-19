@@ -1,5 +1,7 @@
-BLOCKED_PATTERNS = [
+from agents.terminal.state import TerminalState
 
+
+BLOCKED_PATTERNS = [
     "del ",
     "rmdir ",
     "rm ",
@@ -9,7 +11,8 @@ BLOCKED_PATTERNS = [
     "reg delete ",
 ]
 
-def safety_filter_node(state):
+
+def safety_filter_node(state: TerminalState):
 
     command = state["command"].lower()
 
@@ -18,11 +21,8 @@ def safety_filter_node(state):
         if pattern in command:
 
             return {
-                "safe": False,
-                "critic_feedback":
-                    f"Blocked command: {pattern}"
+                "safety_passed": False,
+                "safety_reason": "Blocked command pattern detected.",
             }
 
-    return {
-        "safe": True
-    }
+    return {"safety_passed": True, "safety_reason": ""}

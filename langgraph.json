@@ -1,0 +1,9 @@
+{
+    "dependencies": ["."],
+    "graphs": {
+      "CASO Agent": "./graph/graph_builder.py:graph",
+      "TERMINAL Agent": "./agents/terminal/graph.py:terminal_graph"
+    },
+    "env": "./.env"
+  }
+  

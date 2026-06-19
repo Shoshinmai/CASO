@@ -67,8 +67,8 @@ No markdown.
 No explanation.
 """
     print("\n[PLANNER]")
-    raw = call_ollama(prompt, "freehuntx/qwen3-coder:8b")
-    # raw = call_groq(prompt)
+    # raw = call_ollama(prompt, "freehuntx/qwen3-coder:8b")
+    raw = call_groq(prompt)
 
     print("\n[LLM RAW PLAN]")
     print(raw)

@@ -1,18 +1,27 @@
-ALLOWED_WINDOWS_COMMANDS = {
-    "dir",
-    "cd",
-    "where python",
-    "git status",
-    "git branch",
-    "python --version",
-    "pip list"
-}
+from agents.terminal.state import TerminalState
 
-def validate_command(command: str):
 
-    if not command:
-        return False
+MULTI_COMMAND_PATTERNS = ["&&", "||", ";", "|"]
 
-    first_token = command.split()[0].lower()
 
-    return first_token in ALLOWED_WINDOWS_COMMANDS
+def command_validator_node(state: TerminalState):
+
+    command = state["command"].strip()
+
+    # newline check
+    if "\n" in command:
+        return {
+            "valid_command": False,
+            "validation_error": "Generate exactly one command.",
+        }
+
+    for pattern in MULTI_COMMAND_PATTERNS:
+
+        if pattern in command:
+
+            return {
+                "valid_command": False,
+                "validation_error": "Generate exactly one command.",
+            }
+
+    return {"valid_command": True, "validation_error": ""}

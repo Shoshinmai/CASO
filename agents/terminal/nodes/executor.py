@@ -1,16 +1,15 @@
-from agents.terminal.tools.command_runner import (
-    run_command
-)
+from agents.terminal.state import TerminalState
+from agents.terminal.tools.command_runner import run_command
 
 
-def terminal_executor_node(state):
+def terminal_executor_node(state: TerminalState):
 
-    result = run_command(
-        state["command"]
-    )
+    result = run_command(state["command"])
+
+    observation = result["stdout"] if result["stdout"] else result["stderr"]
 
     return {
-        "output": result["stdout"],
+        "raw_observation": observation,
         "error": result["stderr"],
-        "success": result["returncode"] == 0
+        "success": result["returncode"] == 0,
     }

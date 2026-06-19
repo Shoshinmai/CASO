@@ -1,22 +1,25 @@
+from pydantic import BaseModel
 from typing import TypedDict
-
-
 class TerminalState(TypedDict):
 
     goal: str
 
+    thought: str
     command: str
 
-    output: str
-
+    success: bool
     error: str
 
-    success: bool
+    done: bool
+    step_count: int
 
-    retry_count: int
+    scratchpad: str
 
-    safe: bool
+    valid_command: bool
+    validation_error: str
 
-    critic_decision: str
-
-    critic_feedback: str
+    safety_passed: bool
+    safety_reason: str
+    
+    raw_observation: str
+    compressed_observation: str

@@ -45,4 +45,5 @@ builder.add_edge("tool_router", "executor")
 
 builder.add_edge("executor", END)
 
-graph = builder.compile(checkpointer=checkpointer)
+# graph = builder.compile(checkpointer=checkpointer)
+graph = builder.compile()

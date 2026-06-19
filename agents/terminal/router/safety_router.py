@@ -1,7 +1,11 @@
+from langgraph.graph import END
 
-def safety_router(state):
+from agents.terminal.state import TerminalState
 
-    if state["safe"]:
-        return "critic"
 
-    return "end"
+def safety_router(state: TerminalState):
+
+    if state["safety_passed"]:
+        return "executor"
+
+    return END

@@ -4,12 +4,28 @@ from agents.terminal.graph import (
 
 result = terminal_graph.invoke(
     {
-        "goal": "delete all files",
+        "goal": "find the 'The Finals' games files in e drive only.",
+
+        "thought": "",
         "command": "",
-        "output": "",
-        "error": "",
+        "observation": "",
+
         "success": False,
-        "retry_count": 0
+        "error": "",
+
+        "done": False,
+        "step_count": 0,
+
+        "scratchpad": "",
+        
+        "valid_command": True,
+        "validation_error": "",
+
+        "safety_passed": True,
+        "safety_reason": "",
+        
+        "raw_observation": "",
+        "compressed_observation": ""
     }
 )
 

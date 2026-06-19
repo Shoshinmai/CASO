@@ -12,6 +12,8 @@ agents/terminal/__pycache__
 agents/terminal/nodes/__pycache__
 agents/terminal/prompts/__pycache__
 agents/terminal/router/__pycache__
+agents/terminal/utils/__pycache__
+agents/terminal/tools/__pycache__
 graph/__pycache__
 vectorstore
 data.docx

@@ -1,8 +1,11 @@
 from langgraph.graph import StateGraph, END
 
+from agents.terminal.memory.observation_manager import observation_manager_node
 from agents.terminal.nodes.compressor import terminal_compressor_node
 from agents.terminal.nodes.evaluator import terminal_evaluator_node
+from agents.terminal.nodes.artifact_retriever import artifact_retriever_node
 from agents.terminal.nodes.validator import command_validator_node
+from agents.terminal.router.action_router import action_router
 from agents.terminal.router.evaluator_router import evaluator_router
 from agents.terminal.router.safety_router import safety_router
 from agents.terminal.router.validator_router import validator_router
@@ -16,6 +19,9 @@ from agents.terminal.nodes.executor import terminal_executor_node
 
 from agents.terminal.nodes.observer import terminal_observer_node
 
+
+
+
 builder = StateGraph(TerminalState)
 
 builder.add_node("reasoner", terminal_reasoner_node)
@@ -28,9 +34,25 @@ builder.add_node("observer", terminal_observer_node)
 builder.add_node("evaluator", terminal_evaluator_node)
 builder.add_node("validator", command_validator_node)
 builder.add_node("compressor", terminal_compressor_node)
-
+builder.add_node("observation_manager", observation_manager_node)
+builder.add_node("artifact_retriever", artifact_retriever_node)
 builder.set_entry_point("reasoner")
-builder.add_edge("reasoner", "validator")
+# builder.add_edge("reasoner", "validator")
+builder.add_conditional_edges(
+    "reasoner",
+    action_router,
+    {
+        "validator":
+            "validator",
+
+        "artifact_retriever":
+            "artifact_retriever"
+    }
+)
+builder.add_edge(
+    "artifact_retriever",
+    "observer"
+)
 builder.add_conditional_edges(
     "validator",
     validator_router,
@@ -40,8 +62,9 @@ builder.add_conditional_edges(
 builder.add_conditional_edges(
     "safety_filter", safety_router, {"executor": "executor", END: END}
 )
-builder.add_edge("executor", "compressor")
-builder.add_edge("compressor", "observer")
+builder.add_edge("executor", "observation_manager")
+
+builder.add_edge("observation_manager", "observer")
 builder.add_edge("observer", "evaluator")
 builder.add_conditional_edges(
     "evaluator", evaluator_router, {"reasoner": "reasoner", END: END}

@@ -51,7 +51,7 @@ def call_ollama(prompt: str, model: str, subagent=False, state_model=None) -> st
         keep_alive=0,
     )
     if subagent:
-        structured_llm = llm.with_structured_output(state_model)
+        structured_llm = llm.with_structured_output(state_model, method="json_mode")
         action = structured_llm.invoke(prompt)
         return action
 

@@ -1,9 +1,9 @@
-from pydantic import BaseModel
 from typing import TypedDict
 class TerminalState(TypedDict):
 
     goal: str
 
+    action_type: str
     thought: str
     command: str
 
@@ -23,3 +23,4 @@ class TerminalState(TypedDict):
     
     raw_observation: str
     compressed_observation: str
+    artifact_ids: list[str]

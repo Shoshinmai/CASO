@@ -14,9 +14,14 @@ agents/terminal/prompts/__pycache__
 agents/terminal/router/__pycache__
 agents/terminal/utils/__pycache__
 agents/terminal/tools/__pycache__
+agents/terminal/memory/__pycache__
 graph/__pycache__
 vectorstore
 data.docx
+dem.ipynb
 report.txt
+.langgraph_api
 tools/__pycache__/
 tools/implementations/__pycache__/
+agents/terminal/nodes.zip
+agents/terminal/dem.ipynb

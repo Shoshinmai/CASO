@@ -10,19 +10,29 @@ def terminal_observer_node(state: TerminalState):
     if state.get("artifact_ids"):
         print(f"\nArtifacts: " f"{len(state['artifact_ids'])}")
 
+    planner_output = state.get("planner_output")
+
+    strategy = ""
+
+    if planner_output is not None:
+        strategy = planner_output.planning_step.strategy
+
+    attempt = state.get("step_count", 0) + 1
+
     entry = f"""
-ACTION TYPE:
-{state["action_type"]}
+    ==================================================
+    ATTEMPT {attempt}
+    ==================================================
 
-THOUGHT:
-{state["thought"]}
+    Strategy:
+    {strategy}
 
-COMMAND:
-{state["command"]}
+    Outcome:
+    {state.get("observation_summary", "")}
 
-OBSERVATION:
-{state["compressed_observation"]}
-"""
+    Conclusion:
+    {state.get("observation_conclusion", "")}
+    """
     artifact_ids = state.get("artifact_ids", [])
 
     if artifact_ids:
@@ -43,4 +53,7 @@ OBSERVATION:
     """
 
     updated_scratchpad = state.get("scratchpad", "") + "\n" + entry
-    return {"scratchpad": updated_scratchpad, "step_count": state.get("step_count", 0) + 1}
+    return {
+        "scratchpad": updated_scratchpad,
+        "step_count": state.get("step_count", 0) + 1,
+    }

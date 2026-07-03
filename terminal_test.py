@@ -2,7 +2,8 @@ from agents.terminal.graph import terminal_graph
 
 result = terminal_graph.invoke(
     {
-        "goal": "Find all python files in this project and locate main.py",
+        "goal": "analyze the whole e drive.",
+        # "goal": "locate llmclient.py." ,
         "thought": "",
         "command": "",
         "raw_observation": "",

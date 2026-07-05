@@ -22,9 +22,16 @@ def build_capability_prompt(tools: list[BaseTool]) -> str:
 
         section = []
 
+        section.append("=" * 70)
         section.append(f"Capability: {tool.name}")
+        section.append("=" * 70)
         section.append("")
+        
+        category = getattr(tool, "category", None)
 
+        if category:
+            section.append(f"Category: {category}")
+            section.append("")
         section.append("Description:")
         section.append(tool.description.strip())
         section.append("")

@@ -1,4 +1,4 @@
-from .filesystem import search_files
+from .discovery import search_files
 from .shell import run_terminal
 
 TOOLS = [

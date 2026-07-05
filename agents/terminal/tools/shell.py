@@ -6,46 +6,54 @@ from agents.terminal.tools.command_runner import run_command
 @tool
 def run_terminal(command: str) -> dict:
     """
-    Execute a single Windows terminal command.
-
     PURPOSE
     -------
+    Execute a single Windows terminal command.
+
     This is the fallback capability of the Terminal Agent.
 
-    Use this tool ONLY when no specialized capability can
-    accomplish the requested task.
+    Prefer specialized capabilities whenever they can accomplish
+    the user's goal.
 
-    Prefer specialized tools whenever they are capable of
-    solving the user's request.
+    USE THIS CAPABILITY WHEN
+    ------------------------
+    - No specialized capability exists.
+    - Git operations.
+    - Python execution.
+    - Package managers.
+    - Windows utilities.
+    - System inspection.
+    - Environment diagnostics.
+    - Network utilities.
+    - Custom shell workflows.
 
-    Typical use cases:
+    DO NOT USE THIS CAPABILITY WHEN
+    -------------------------------
+    - search_files can locate the file.
+    - list_directory can inspect folders.
+    - read_file can read the required file.
+    - replace_text can modify a file.
+    - Any other specialized capability directly solves the task.
 
-    - commands not covered by existing tools
-    - filesystem operations unavailable through specialized tools
-    - git commands
-    - python execution
-    - package managers
-    - system inspection
-    - network utilities
-    - Windows administration
-    - command-line utilities
+    COMMAND RULES
+    -------------
+    - Generate exactly ONE command.
+    - Never chain commands.
+    - Do not use && or ||.
+    - Prefer read-only commands unless the user's request explicitly
+      requires modification.
 
-    Do NOT use this tool when another capability already
-    provides the same functionality.
+    IMPORTANT
+    ---------
+    This capability should only be selected after specialized
+    capabilities have been considered.
 
-    The command must be exactly ONE terminal command.
-
-    Do not chain commands.
-
-    Args:
-        command:
-            A complete executable Windows command.
-
-    Returns:
-        stdout
-        stderr
-        return_code
-        success
+    Returns
+    -------
+    stdout
+    stderr
+    return_code
+    success
     """
 
     result = run_command(command)

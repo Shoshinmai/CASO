@@ -91,3 +91,34 @@ class PlanningOutput(BaseModel):
     """
 
     planning_step: PlanningStep
+    
+class ListDirectoryInput(BaseModel):
+    """
+    Input schema for listing the contents of a directory.
+    """
+
+    location: str = Field(
+        default="current directory",
+        description=(
+            "Directory to inspect. Supports natural language locations "
+            "such as current directory, project, desktop, downloads, "
+            "documents, pictures, videos, music, C drive, D drive, etc."
+        ),
+    )
+
+    recursive: bool = Field(
+        default=False,
+        description="Whether to recursively traverse subdirectories."
+    )
+
+    include_hidden: bool = Field(
+        default=False,
+        description="Include hidden files and folders."
+    )
+
+    max_depth: int = Field(
+        default=2,
+        ge=1,
+        le=20,
+        description="Maximum recursion depth when recursive=True."
+    )

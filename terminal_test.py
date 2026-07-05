@@ -3,7 +3,7 @@ from agents.terminal.graph import terminal_graph
 result = terminal_graph.invoke(
     {
         # "goal": "locate video files in e drive and count them.",
-        "goal": "locate llmclient.py.",
+        "goal": "analyze the current directory and its subdirectories.",
         "thought": "",
         "command": "",
         "raw_observation": "",

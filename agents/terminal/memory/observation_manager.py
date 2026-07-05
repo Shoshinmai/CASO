@@ -20,7 +20,7 @@ def analyze_observation(state):
         output_preview=output[:2000],
     )
     # res = call_ollama(prompt, "qwen2.5:7b-instruct-q3_K_M", subagent=True, state_model=ObservationDecision)
-    res = call_nvidia(prompt, "nvidia/nemotron-3-ultra-550b-a55b", subagent=True, state_model=ObservationDecision)
+    res = call_nvidia(prompt, "qwen/qwen3.5-122b-a10b", subagent=True, state_model=ObservationDecision)
     
     print("\n========== RAW RESPONSE ==========")
     print(res)

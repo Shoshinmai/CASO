@@ -27,8 +27,8 @@ def terminal_planner_node(state):
 
     # plan = call_ollama(
     #     prompt=prompt,
-    #     model="qwen2.5:7b-instruct-q3_K_M",
-    #     # model="freehuntx/qwen3-coder:8b ",
+    #     # model="qwen2.5:7b-instruct-q3_K_M",
+    #     model="freehuntx/qwen3-coder:8b ",
     #     subagent=True,
     #     state_model=PlanningOutput,
     # )

@@ -1,11 +1,19 @@
+import json
+import shutil
 import string
 from pathlib import Path
-
+import subprocess
+import shlex
 from langchain_core.tools import tool
 
-from agents.terminal.models import ListDirectoryInput
+from agents.terminal.models import ListDirectoryInput, SearchContentInput
 from agents.terminal.utils.location_resolver import resolve_location
 from agents.terminal.utils.filesystem_helpers import safe_walk
+from agents.terminal.utils.text_helpers import (
+    find_search_backend,
+    safe_read_text,
+    is_binary_file,
+)
 
 # from .terminal.utils.location_resolver import resolve_location
 
@@ -180,30 +188,30 @@ def list_directory(
     files, summary counts, and traversal metadata.
     """
 
-#     list_directory.category = "Discovery"
-#     list_directory.return_description = """
-# Returns:
+    #     list_directory.category = "Discovery"
+    #     list_directory.return_description = """
+    # Returns:
 
-# - success
-# - resolved_path
-# - directories
-# - files
-# - total_directories
-# - total_files
-# - recursive
-# - truncated
-# """
-#     list_directory.usage_notes = """
-# Use this capability to inspect a directory.
+    # - success
+    # - resolved_path
+    # - directories
+    # - files
+    # - total_directories
+    # - total_files
+    # - recursive
+    # - truncated
+    # """
+    #     list_directory.usage_notes = """
+    # Use this capability to inspect a directory.
 
-# Do not use it to locate files by name.
+    # Do not use it to locate files by name.
 
-# Use search_files instead.
+    # Use search_files instead.
 
-# Do not use it to read files.
+    # Do not use it to read files.
 
-# Use read_file instead.
-# """
+    # Use read_file instead.
+    # """
     try:
         root_path = resolve_location(location)
 
@@ -265,6 +273,319 @@ def list_directory(
         "total_directories": total_directories,
         "total_files": total_files,
         "recursive": recursive,
+        "truncated": truncated,
+    }
+
+
+@tool(args_schema=SearchContentInput)
+def search_content(
+    query: str,
+    location: str = "current directory",
+    file_pattern: str = "*",
+    case_sensitive: bool = False,
+    max_results: int = 50,
+) -> dict:
+    """
+    PURPOSE
+    -------
+    Locate files by searching inside their contents.
+
+    This capability searches text contained within files rather
+    than searching filenames.
+
+    TYPICAL USE CASES
+    -----------------
+    - Find a function definition.
+    - Locate configuration values.
+    - Search for error messages.
+    - Locate TODO comments.
+    - Find class names.
+    - Search log files.
+
+    USE THIS CAPABILITY WHEN
+    ------------------------
+    - The filename is unknown.
+    - The user knows text contained inside a file.
+    - Searching by file contents is appropriate.
+
+    DO NOT USE THIS CAPABILITY WHEN
+    -------------------------------
+    - Searching for filenames.
+      Use search_files.
+
+    - Browsing directory structures.
+      Use list_directory.
+
+    - Reading a file.
+      Use read_file.
+
+    - Executing shell commands.
+      Use run_terminal only if no specialized capability applies.
+
+    IMPORTANT
+    ---------
+    Search results should contain matching files, line numbers,
+    and small snippets that help identify relevant results.
+
+    Returns
+    -------
+    Structured content search results and search metadata.
+    """
+
+    try:
+        root_path = resolve_location(location)
+
+    except ValueError as e:
+        return {
+            "success": False,
+            "query": query,
+            "location": location,
+            "error": str(e),
+        }
+
+    backend = find_search_backend()
+
+    if backend == "ripgrep":
+        return _search_with_ripgrep(
+            query=query,
+            root=root_path,
+            file_pattern=file_pattern,
+            case_sensitive=case_sensitive,
+            max_results=max_results,
+        )
+
+    # if backend == "grep":
+    #     return _search_with_grep(
+    #         query=query,
+    #         root=root_path,
+    #         file_pattern=file_pattern,
+    #         case_sensitive=case_sensitive,
+    #         max_results=max_results,
+    #     )
+
+    return _search_with_python(
+        query=query,
+        root=root_path,
+        file_pattern=file_pattern,
+        case_sensitive=case_sensitive,
+        max_results=max_results,
+    )
+
+
+def _search_with_ripgrep(
+    query: str,
+    root: Path,
+    file_pattern: str,
+    case_sensitive: bool,
+    max_results: int,
+) -> dict:
+    if shutil.which("rg") is None:
+        return {
+            "success": False,
+            "query": query,
+            "backend": "ripgrep",
+            "root": str(root),
+            "error": "Ripgrep is not installed or is not available on PATH.",
+        }
+    command = [
+        "rg",
+        "--json",
+        "--glob",
+        file_pattern,
+    ]
+
+    if not case_sensitive:
+        command.append("-i")
+
+    command.append(query)
+    command.append(str(root))
+
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        print("COMMAND:", command)
+        print("RETURN CODE:", result.returncode)
+        print("STDOUT:", repr(result.stdout[:2000]))
+        print("STDERR:", repr(result.stderr))
+
+    except subprocess.TimeoutExpired:
+        return {
+            "success": False,
+            "query": query,
+            "backend": "ripgrep",
+            "error": "Search timed out.",
+        }
+
+    except Exception as exc:
+        return {
+            "success": False,
+            "query": query,
+            "backend": "ripgrep",
+            "error": str(exc),
+        }
+
+    if result.returncode not in (0, 1) or result.stderr.strip():
+        return {
+            "success": False,
+            "query": query,
+            "backend": "ripgrep",
+            "root": str(root),
+            "error": result.stderr.strip() or (
+                f"Ripgrep failed with return code {result.returncode}."
+            ),
+        }
+
+    matches = []
+    truncated = False
+
+    for output_line in result.stdout.splitlines():
+
+        try:
+            event = json.loads(output_line)
+        except json.JSONDecodeError:
+            continue
+
+        if event.get("type") != "match":
+            continue
+
+        data = event.get("data", {})
+
+        path_data = data.get("path", {})
+        lines_data = data.get("lines", {})
+        submatches = data.get("submatches", [])
+
+        file_path = path_data.get("text")
+        snippet = lines_data.get("text", "").rstrip("\r\n")
+        line_number = data.get("line_number")
+
+        if not file_path:
+            continue
+
+        column = None
+
+        if submatches:
+            column = submatches[0].get("start")
+
+            if column is not None:
+                column += 1
+
+        if len(matches) >= max_results:
+            truncated = True
+            break
+
+        matches.append(
+            {
+                "file": file_path,
+                "line": line_number,
+                "column": column,
+                "snippet": snippet,
+            }
+        )
+    return {
+        "success": True,
+        "query": query,
+        "backend": "ripgrep",
+        "root": str(root),
+        "count": len(matches),
+        "matches": matches,
+        "truncated": truncated,
+    }
+
+
+def _search_with_grep(
+    query: str,
+    root: Path,
+    file_pattern: str,
+    case_sensitive: bool,
+    max_results: int,
+) -> dict:
+    raise NotImplementedError
+
+
+def _search_with_python(
+    query: str,
+    root: Path,
+    file_pattern: str,
+    case_sensitive: bool,
+    max_results: int,
+) -> dict:
+
+    matches = []
+    truncated = False
+
+    search_query = query if case_sensitive else query.lower()
+
+    try:
+        for path in safe_walk(
+            root=root,
+            recursive=True,
+            include_hidden=False,
+            max_depth=None,
+        ):
+            if not path.is_file():
+                continue
+
+            if not path.match(file_pattern):
+                continue
+
+            if is_binary_file(path):
+                continue
+
+            try:
+                with path.open(
+                    "r",
+                    encoding="utf-8",
+                    errors="replace",
+                ) as file:
+
+                    for line_number, line in enumerate(file, start=1):
+
+                        searchable_line = line if case_sensitive else line.lower()
+
+                        if search_query not in searchable_line:
+                            continue
+
+                        if len(matches) >= max_results:
+                            truncated = True
+                            break
+
+                        column = searchable_line.find(search_query) + 1
+
+                        matches.append(
+                            {
+                                "file": str(path),
+                                "line": line_number,
+                                "column": column,
+                                "snippet": line.rstrip("\r\n"),
+                            }
+                        )
+
+            except (PermissionError, OSError, UnicodeError):
+                continue
+
+            if truncated:
+                break
+
+    except Exception as exc:
+        return {
+            "success": False,
+            "query": query,
+            "backend": "python",
+            "root": str(root),
+            "error": str(exc),
+        }
+
+    return {
+        "success": True,
+        "query": query,
+        "backend": "python",
+        "root": str(root),
+        "count": len(matches),
+        "matches": matches,
         "truncated": truncated,
     }
 

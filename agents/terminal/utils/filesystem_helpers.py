@@ -11,7 +11,7 @@ def safe_walk(
     root: Path,
     recursive: bool = False,
     include_hidden: bool = False,
-    max_depth: int = 2,
+    max_depth: int | None = None,
 ) -> Iterator[Path]:
     """
     Safely traverse a directory.
@@ -38,13 +38,13 @@ def safe_walk(
 
     def walk(directory: Path, depth: int):
         
-        if depth > max_depth:
+        if max_depth is not None and depth > max_depth:
             return
         try:
             entries = list(directory.iterdir())
         except (PermissionError, OSError):
             return
-        for entry in directory.iterdir():
+        for entry in entries:
             if not include_hidden and is_hidden(entry):
                 continue
             yield entry

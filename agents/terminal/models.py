@@ -122,3 +122,67 @@ class ListDirectoryInput(BaseModel):
         le=20,
         description="Maximum recursion depth when recursive=True."
     )
+    
+class SearchContentInput(BaseModel):
+    """
+    Input schema for searching text inside files.
+    """
+
+    query: str = Field(
+        description="Text or pattern to search for."
+    )
+
+    location: str = Field(
+        default="current directory",
+        description=(
+            "Natural language search location."
+        ),
+    )
+
+    file_pattern: str = Field(
+        default="*",
+        description=(
+            "Glob pattern limiting which files are searched."
+        ),
+    )
+
+    case_sensitive: bool = Field(
+        default=False,
+        description="Perform case-sensitive matching."
+    )
+
+    max_results: int = Field(
+        default=50,
+        ge=1,
+        le=500,
+        description="Maximum number of matching files."
+    )
+
+class ReadFileInput(BaseModel):
+    """
+    Input schema for reading a bounded window of a text file.
+    """
+
+    path: str = Field(
+        description=(
+            "Path of the text file to read. Supports absolute "
+            "and relative filesystem paths."
+        )
+    )
+
+    start_line: int = Field(
+        default=1,
+        ge=1,
+        description=(
+            "First line to read. Lines are 1-indexed."
+        ),
+    )
+
+    max_lines: int = Field(
+        default=200,
+        ge=1,
+        le=1000,
+        description=(
+            "Maximum number of lines to return."
+        ),
+    )

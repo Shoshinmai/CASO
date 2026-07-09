@@ -10,8 +10,8 @@ from llm.llmclient import call_ollama
 def terminal_tool_selector_node(state):
     
     print("\n===== TOOL SELECTOR STATE =====")
-    print(state)
-    print(type(state))
+    # print(state)
+    # print(type(state))
     print(state.get("planner_output"))
 
     plan = state["planner_output"].planning_step

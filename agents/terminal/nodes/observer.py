@@ -1,4 +1,3 @@
-from agents.terminal.memory import artifact_store
 from agents.terminal.state import TerminalState
 
 
@@ -28,30 +27,11 @@ def terminal_observer_node(state: TerminalState):
     {strategy}
 
     Outcome:
-    {state.get("observation_summary", "")}
+    {state.get("compressed_observation", "")}
 
     Conclusion:
     {state.get("observation_conclusion", "")}
     """
-    artifact_ids = state.get("artifact_ids", [])
-
-    if artifact_ids:
-
-        entry += "\n\nARTIFACTS:\n"
-
-        for artifact_id in artifact_ids:
-
-            artifact = artifact_store.get(artifact_id)
-
-            if artifact:
-
-                entry += f"""
-    ID: {artifact.artifact_id}
-    TYPE: {artifact.artifact_type}
-    SUMMARY: {artifact.summary}
-
-    """
-
     updated_scratchpad = state.get("scratchpad", "") + "\n" + entry
     return {
         "scratchpad": updated_scratchpad,

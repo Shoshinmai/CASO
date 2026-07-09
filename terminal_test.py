@@ -3,7 +3,7 @@ from agents.terminal.graph import terminal_graph
 result = terminal_graph.invoke(
     {
         # "goal": "locate video files in e drive and count them.",
-        "goal": "where is call_ollama is implemented.",
+        "goal": "Analyze the node planner in the agents.",
         "thought": "",
         "command": "",
         "raw_observation": "",

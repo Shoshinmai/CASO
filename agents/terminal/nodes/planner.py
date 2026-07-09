@@ -13,8 +13,8 @@ def terminal_planner_node(state):
     capability_prompt = build_capability_prompt(
         candidate_tools
     )
-    print("\n========== CAPABILITY PROMPT ==========")
-    print(capability_prompt)
+    # print("\n========== CAPABILITY PROMPT ==========")
+    # print(capability_prompt)
 
     prompt = TERMINAL_PLANNER_PROMPT.format(
         goal=state["goal"],
@@ -33,12 +33,12 @@ def terminal_planner_node(state):
     #     state_model=PlanningOutput,
     # )
     plan = call_nvidia(prompt, "nvidia/nemotron-3-ultra-550b-a55b", subagent=True, state_model=PlanningOutput)
-    print(PlanningOutput.model_json_schema())
+    # print(PlanningOutput.model_json_schema())
 
-    print("\n========== PLANNER ==========")
-    print(plan.model_dump())
-    print(type(plan))
-    print(plan)
+    # print("\n========== PLANNER ==========")
+    # print(plan.model_dump())
+    # print(type(plan))
+    # print(plan)
 
     return {
         "planner_output": plan,

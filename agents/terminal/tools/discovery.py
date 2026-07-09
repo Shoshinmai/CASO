@@ -326,6 +326,8 @@ def search_content(
     ---------
     Search results should contain matching files, line numbers,
     and small snippets that help identify relevant results.
+    It is mandatory to give file pattern.
+    It is mandatory to give location.
 
     Returns
     -------

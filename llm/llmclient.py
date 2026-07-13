@@ -69,6 +69,7 @@ def call_nvidia(prompt: str, model: str, subagent=False, state_model=None, tool=
     llm = ChatNVIDIA(
     model=model,
     temperature=0.2,
+    timeout= 180,
     top_p=0.95,
     max_completion_tokens=16384,
     )

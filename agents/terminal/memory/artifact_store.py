@@ -31,3 +31,41 @@ class ArtifactStore:
     def get_all(self):
 
         return list(self._store.values())
+
+    def get_catalog(
+        self,
+        artifact_ids: list[str] | None = None,
+    ) -> list[dict]:
+        """
+        Return compact metadata for stored artifacts.
+
+        Args:
+            artifact_ids:
+                Optional list of artifact IDs to include.
+                If omitted, all stored artifacts are included.
+
+        Returns:
+            Compact artifact metadata suitable for planner context.
+        """
+
+        if artifact_ids is None:
+            artifacts = self.get_all()
+
+        else:
+            artifacts = []
+
+            for artifact_id in artifact_ids:
+
+                artifact = self.get(artifact_id)
+
+                if artifact is not None:
+                    artifacts.append(artifact)
+
+        return [
+            {
+                "artifact_id": artifact.artifact_id,
+                "artifact_type": artifact.artifact_type,
+                "summary": artifact.summary,
+            }
+            for artifact in artifacts
+        ]

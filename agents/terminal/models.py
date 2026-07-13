@@ -42,7 +42,7 @@ class ObservationDecision(BaseModel):
 
     important_information: str
 
-    reasoning: str 
+    reasoning: str
 
     conclusion: str
     # summary: str = Field(min_length=1)
@@ -52,6 +52,7 @@ class ObservationDecision(BaseModel):
     # reasoning: str = Field(min_length=1)
 
     # conclusion: str = Field(min_length=1)
+
 
 class ObservationInput(BaseModel):
 
@@ -63,22 +64,18 @@ class ObservationInput(BaseModel):
 
     raw_result: dict | str
 
+
 class PlanningStep(BaseModel):
     """
     Single planning decision produced by the planner.
     """
 
-    strategy: str = Field(
-        description="High-level strategy for the next step."
-    )
+    strategy: str = Field(description="High-level strategy for the next step.")
 
-    capability: str = Field(
-        description="Capability selected for execution."
-    )
+    capability: str = Field(description="Capability selected for execution.")
 
     args: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Arguments for the selected capability."
+        default_factory=dict, description="Arguments for the selected capability."
     )
 
 
@@ -91,7 +88,8 @@ class PlanningOutput(BaseModel):
     """
 
     planning_step: PlanningStep
-    
+
+
 class ListDirectoryInput(BaseModel):
     """
     Input schema for listing the contents of a directory.
@@ -107,56 +105,46 @@ class ListDirectoryInput(BaseModel):
     )
 
     recursive: bool = Field(
-        default=False,
-        description="Whether to recursively traverse subdirectories."
+        default=False, description="Whether to recursively traverse subdirectories."
     )
 
     include_hidden: bool = Field(
-        default=False,
-        description="Include hidden files and folders."
+        default=False, description="Include hidden files and folders."
     )
 
     max_depth: int = Field(
         default=2,
         ge=1,
         le=20,
-        description="Maximum recursion depth when recursive=True."
+        description="Maximum recursion depth when recursive=True.",
     )
-    
+
+
 class SearchContentInput(BaseModel):
     """
     Input schema for searching text inside files.
     """
 
-    query: str = Field(
-        description="Text or pattern to search for."
-    )
+    query: str = Field(description="Text or pattern to search for.")
 
     location: str = Field(
         default="current directory",
-        description=(
-            "Natural language search location."
-        ),
+        description=("Natural language search location."),
     )
 
     file_pattern: str = Field(
         default="*",
-        description=(
-            "Glob pattern limiting which files are searched."
-        ),
+        description=("Glob pattern limiting which files are searched."),
     )
 
     case_sensitive: bool = Field(
-        default=False,
-        description="Perform case-sensitive matching."
+        default=False, description="Perform case-sensitive matching."
     )
 
     max_results: int = Field(
-        default=50,
-        ge=1,
-        le=500,
-        description="Maximum number of matching files."
+        default=50, ge=1, le=500, description="Maximum number of matching files."
     )
+
 
 class ReadFileInput(BaseModel):
     """
@@ -173,16 +161,71 @@ class ReadFileInput(BaseModel):
     start_line: int = Field(
         default=1,
         ge=1,
-        description=(
-            "First line to read. Lines are 1-indexed."
-        ),
+        description=("First line to read. Lines are 1-indexed."),
     )
 
     max_lines: int = Field(
         default=200,
         ge=1,
         le=1000,
+        description=("Maximum number of lines to return."),
+    )
+
+
+class GetFileInfoInput(BaseModel):
+    """
+    Input schema for retrieving filesystem metadata about a file
+    or directory.
+    """
+
+    path: str = Field(
         description=(
-            "Maximum number of lines to return."
-        ),
+            "Path of the file or directory to inspect. "
+            "Supports absolute and relative filesystem paths."
+        )
+    )
+
+
+class SearchArtifactInput(BaseModel):
+    """
+    Input schema for searching within a stored artifact.
+    """
+
+    artifact_id: str = Field(
+        description=("Unique identifier of the artifact to search.")
+    )
+
+    query: str = Field(
+        min_length=1, description=("Text to search for within the artifact.")
+    )
+
+    case_sensitive: bool = Field(
+        default=False, description=("Whether matching should respect letter case.")
+    )
+
+    max_results: int = Field(
+        default=50,
+        ge=1,
+        le=500,
+        description=("Maximum number of matching lines to return."),
+    )
+
+class ReadArtifactInput(BaseModel):
+    """
+    Input schema for reading a bounded window from a stored artifact.
+    """
+
+    artifact_id: str = Field(description=("Unique identifier of the artifact to read."))
+
+    start_line: int = Field(
+        default=1,
+        ge=1,
+        description=("First serialized artifact line to read. " "Lines are 1-indexed."),
+    )
+
+    max_lines: int = Field(
+        default=200,
+        ge=1,
+        le=1000,
+        description=("Maximum number of serialized artifact lines to return."),
     )

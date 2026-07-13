@@ -81,6 +81,30 @@ does NOT constitute a new strategy if the underlying capability remains the same
 
 Prefer changing capabilities rather than making small variations to an exhausted capability.
 
+================================
+ARTIFACT REUSE
+================================
+
+Available artifacts contain information preserved from previous
+tool executions.
+
+Before repeating a capability, inspect Available Artifacts.
+
+If a relevant artifact already contains information that may help
+complete the goal:
+
+- use search_artifact to locate specific information inside it;
+- use read_artifact to inspect a known section or continue reading it.
+
+Do not repeat an expensive capability only to regenerate information
+that is already available in an artifact.
+
+Use fresh filesystem or system capabilities only when:
+
+- no relevant artifact exists;
+- the artifact does not contain the required information;
+- or the information may have changed and fresh data is necessary.
+
 --------------------------------------------------
 Goal
 --------------------------------------------------

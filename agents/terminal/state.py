@@ -1,47 +1,111 @@
-from typing import Literal, Optional, TypedDict
-from typing import Annotated
-
-from langgraph.graph.message import add_messages
+from typing import Annotated, Literal, Optional, TypedDict
 
 from langchain_core.messages import AnyMessage
+from langgraph.graph.message import add_messages
 
-from agents.terminal.models import ObservationInput, PlanningOutput
+from agents.terminal.models import (
+    ActiveTaskMemory,
+    ArtifactReference,
+    EphemeralExecutionState,
+    ExecutionMemory,
+    ObservationInput,
+    PersistentMemory,
+    PlanningOutput,
+    TaskContext,
+    ThreadMemory,
+)
 
 
 class TerminalState(TypedDict):
 
-    goal: str
+    # ==========================================================
+    # NEW STRUCTURED STATE
+    # ==========================================================
+
+    task: TaskContext
+
+    active_memory: ActiveTaskMemory
+
+    execution_memory: ExecutionMemory
+
+    artifact_references: list[ArtifactReference]
+
+    thread_memory: ThreadMemory
+
+    persistent_memory: PersistentMemory
+
+    ephemeral: EphemeralExecutionState
+
+
+    # ==========================================================
+    # GRAPH / TOOL PROTOCOL
+    # ==========================================================
+
     messages: Annotated[list[AnyMessage], add_messages]
+
+
+    # ==========================================================
+    # LEGACY EXECUTION FIELDS
+    #
+    # Temporarily retained while graph nodes are migrated to the
+    # new structured state architecture.
+    # ==========================================================
+
+    goal: str
+
     action_type: str
+
     thought: str
+
     command: str
+
     tool_name: str
+
     tool_input: str
 
     success: bool
+
     error: str
 
     done: bool
+
     step_count: int
 
-    scratchpad: str
-
     valid_command: bool
+
     validation_error: str
 
     safety_passed: bool
+
     safety_reason: str
 
     raw_observation: str
+
     compressed_observation: str
+
     observation_input: ObservationInput | None
+
     artifact_ids: list[str]
+
     artifact_type: Literal[
-        "file_listing", "package_list", "log", "git_diff", "command_output"
+        "file_listing",
+        "package_list",
+        "log",
+        "git_diff",
+        "command_output",
     ]
 
     observation_summary: str
 
     observation_conclusion: str
 
-    planner_output: Optional[PlanningOutput] = None
+    planner_output: Optional[PlanningOutput]
+
+
+    # ==========================================================
+    # DEPRECATED MEMORY FIELD
+    #
+    # Retained only until the old scratchpad pipeline is removed.
+    # ==========================================================
+
+    scratchpad: str

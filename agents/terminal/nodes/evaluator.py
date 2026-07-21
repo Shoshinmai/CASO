@@ -40,8 +40,8 @@ def terminal_evaluator_node(state: TerminalState):
     )
     # response = call_ollama(prompt, "llama3.1:8b", True, EvaluatorDecision)
 
-    print("\n[EVALUATOR]")
-    print(f"Scratchpad: {state.get("scratchpad", "")}")
-    print(response)
+    # print("\n[EVALUATOR]")
+    # print(f"Scratchpad: {state.get("scratchpad", "")}")
+    # print(response)
 
     return {"done": response.decision == "DONE"}

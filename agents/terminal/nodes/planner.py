@@ -3,6 +3,9 @@ from agents.terminal.models import PlanningOutput
 from agents.terminal.prompts.planner_prompt import TERMINAL_PLANNER_PROMPT
 from agents.terminal.utils.capability_selector import get_candidate_tools
 from agents.terminal.utils.tool_prompt_builder import build_capability_prompt
+from agents.terminal.utils.memory_formatter import (
+    format_active_memory,
+)
 from llm.llmclient import call_nvidia, call_ollama
 
 
@@ -12,12 +15,26 @@ def terminal_planner_node(state):
 
     capability_prompt = build_capability_prompt(candidate_tools)
     artifact_context = build_artifact_context(state.get("artifact_ids", []))
-    print("\n========== CAPABILITY PROMPT ==========")
-    print(capability_prompt)
-
+    runtime_memory = format_active_memory(
+        active_memory=state["active_memory"],
+        # execution_memory=state["execution_memory"],
+        # thread_memory=state["thread_memory"],
+    )
+    print("\n========== ACTIVE MEMORY ==========")
+    print(runtime_memory)
+    # print("\n========== CAPABILITY PROMPT ==========")
+    # print(capability_prompt)
+    if not runtime_memory:
+        planner_context = state.get("scratchpad", "")
+    else:
+        planner_context = runtime_memory + "\n\n" + state.get("scratchpad", "")
+        
+    print("\n[PLANNER CONTEXT]")
+    print(planner_context)
+        
     prompt = TERMINAL_PLANNER_PROMPT.format(
         goal=state["goal"],
-        scratchpad=state.get("scratchpad", ""),
+        scratchpad=planner_context,
         artifact_context=artifact_context,
         validation_error=state.get("validation_error", ""),
         safety_reason=state.get("safety_reason", ""),

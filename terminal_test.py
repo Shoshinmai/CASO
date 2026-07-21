@@ -1,9 +1,11 @@
 from agents.terminal.graph import terminal_graph
 
+config = {"configurable": {"thread_id": "caso-3"}}
+
 result = terminal_graph.invoke(
     {
         # "goal": "locate video files in e drive and count them.",
-        "goal": "Analyze the current directory and its subdirectories, then show the files related to the terminal agent.",
+        "goal": "Analyze the current directory and look for planner files.",
         "thought": "",
         "command": "",
         "raw_observation": "",
@@ -18,7 +20,8 @@ result = terminal_graph.invoke(
         "validation_error": "",
         "safety_passed": True,
         "safety_reason": "",
-    }
+    },
+    config=config,
 )
 
 print("\n[DONE]")

@@ -57,8 +57,8 @@ def call_ollama(
 
     elif tool:
         llm_with_tools = llm.bind_tools(TOOLS)
-        print(type(llm))
-        print(type(llm_with_tools))
+        # print(type(llm))
+        # print(type(llm_with_tools))
         return llm_with_tools.invoke(prompt)
 
     res = llm.invoke(prompt)
@@ -75,15 +75,15 @@ def call_nvidia(prompt: str, model: str, subagent=False, state_model=None, tool=
     )
     if subagent:
         structured_llm = llm.with_structured_output(state_model, method="json_mode")
-        print(state_model)
-        print(state_model.model_json_schema())
+        # print(state_model)
+        # print(state_model.model_json_schema())
         action = structured_llm.invoke(prompt)
         return action
 
     elif tool:
         llm_with_tools = llm.bind_tools(TOOLS)
-        print(type(llm))
-        print(type(llm_with_tools))
+        # print(type(llm))
+        # print(type(llm_with_tools))
         return llm_with_tools.invoke(prompt)
     res = llm.invoke(prompt)
     return res.content

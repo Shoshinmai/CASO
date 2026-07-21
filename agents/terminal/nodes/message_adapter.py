@@ -4,6 +4,9 @@ from langchain_core.messages import ToolMessage
 
 from agents.terminal.state import TerminalState
 from agents.terminal.models import ObservationInput
+from agents.terminal.result_processing.processor import (
+    process_tool_result,
+)
 
 
 def message_adapter_node(state: TerminalState):
@@ -26,13 +29,26 @@ def message_adapter_node(state: TerminalState):
     except json.JSONDecodeError:
         raw_result = latest_tool_message.content
 
+    processed_result = process_tool_result(
+        state=state,
+        tool_name=latest_tool_message.name,
+        raw_result=raw_result,
+        attempt=1,
+    )
+    if not processed_result:
+        print("\nPROCESSED RESULT")
+        print(state["active_memory"])
+        print("NONE")
+    else:
+        print("\nPROCESSED RESULT")
+        print(state["active_memory"])
+        print(processed_result)
+
     observation_input = ObservationInput(
         source="tool",
         tool_name=latest_tool_message.name,
         success=(
-            raw_result.get("success", True)
-            if isinstance(raw_result, dict)
-            else True
+            raw_result.get("success", True) if isinstance(raw_result, dict) else True
         ),
         raw_result=raw_result,
     )
@@ -40,6 +56,4 @@ def message_adapter_node(state: TerminalState):
     print("\n[MESSAGE ADAPTER]")
     print(observation_input)
 
-    return {
-        "observation_input": observation_input
-    }
+    return {"observation_input": observation_input}

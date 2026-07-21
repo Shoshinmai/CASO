@@ -1,7 +1,8 @@
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph, END
-
+from agents.terminal.nodes.task_initializer import task_initializer_node
 from agents.terminal.memory.observation_manager import observation_manager_node
-from agents.terminal.nodes.compressor import terminal_compressor_node
+# from agents.terminal.nodes.compressor import terminal_compressor_node
 from agents.terminal.nodes.evaluator import terminal_evaluator_node
 from agents.terminal.nodes.artifact_retriever import artifact_retriever_node
 from agents.terminal.nodes.message_adapter import message_adapter_node
@@ -23,6 +24,7 @@ from agents.terminal.nodes.executor import terminal_executor_node
 
 from agents.terminal.nodes.observer import terminal_observer_node
 
+checkpointer = MemorySaver()
 
 builder = StateGraph(TerminalState)
 tool_node = ToolNode(TOOLS)
@@ -43,14 +45,19 @@ builder.add_node("executor", terminal_executor_node)
 builder.add_node("observer", terminal_observer_node)
 builder.add_node("evaluator", terminal_evaluator_node)
 builder.add_node("validator", command_validator_node)
-builder.add_node("compressor", terminal_compressor_node)
+# builder.add_node("compressor", terminal_compressor_node)
 builder.add_node("observation_manager", observation_manager_node)
+builder.add_node(
+    "task_initializer",
+    task_initializer_node,
+)
 builder.add_node("artifact_retriever", artifact_retriever_node)
 builder.add_node(
     "message_adapter",
     message_adapter_node,
 )
-builder.set_entry_point("planner")
+builder.set_entry_point("task_initializer")
+builder.add_edge("task_initializer" ,"planner")
 builder.add_edge("planner", "tool_selector")
 builder.add_edge("tool_selector", "tools")
 builder.add_edge("tools", "message_adapter")
@@ -79,4 +86,5 @@ builder.add_conditional_edges(
     "evaluator", evaluator_router, {"planner": "planner", END: END}
 )
 
-terminal_graph = builder.compile()
+# terminal_graph = builder.compile()
+terminal_graph = builder.compile(checkpointer=checkpointer)

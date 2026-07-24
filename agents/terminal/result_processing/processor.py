@@ -1,4 +1,5 @@
 from agents.terminal.result_processing.memory_condenser import condense_memory
+from agents.terminal.result_processing.models import RuntimeProcessingResult
 from agents.terminal.state import TerminalState
 
 from agents.terminal.result_processing.normalizer import (
@@ -22,7 +23,7 @@ def process_tool_result(
     tool_name: str,
     raw_result: dict,
     attempt: int = 1,
-) -> None:
+) -> RuntimeProcessingResult:
     """
     Process a raw tool result through the Runtime Processing Pipeline.
 
@@ -53,7 +54,8 @@ def process_tool_result(
         tool_name=normalized.context.tool_name,
     )
     
-    mutate_state(
-        state=state,
-        proposal=proposal,
-    )
+    return RuntimeProcessingResult(
+    normalized_result=normalized,
+    artifact_decision=_artifact_decision,
+    memory_update=proposal,
+)

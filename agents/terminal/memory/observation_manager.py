@@ -6,6 +6,16 @@ from llm.llmclient import call_nvidia, call_ollama
 
 
 def analyze_observation(state):
+    
+    processed = state.get("runtime_processing_result")
+
+    if processed is None:
+        raise RuntimeError(
+            "RuntimeProcessingResult missing. "
+            "Message Adapter must execute process_tool_result first."
+        )
+    print("\n========== RUNTIME PROCESSING RESULT ==========")
+    print(processed)
 
     observation = state["observation_input"]
 

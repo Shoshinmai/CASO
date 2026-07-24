@@ -4,8 +4,8 @@ config = {"configurable": {"thread_id": "caso-3"}}
 
 result = terminal_graph.invoke(
     {
-        # "goal": "locate video files in e drive and count them.",
-        "goal": "Analyze the current directory and look for planner files.",
+        "goal": "Find all planner-related files in the project and explain how the planner is implemented.",
+        # "goal": "Analyze the current directory and look for planner files.",
         "thought": "",
         "command": "",
         "raw_observation": "",

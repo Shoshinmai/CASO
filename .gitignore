@@ -25,9 +25,14 @@ tools/__pycache__/
 tools/implementations/__pycache__/
 agents/terminal/nodes.zip
 agents/terminal/dem.ipynb
-agents/terminal/utils.zip
-agents/terminal/tools.zip
 agents/terminal/memory.zip
+agents/terminal/models.zip
+agents/terminal/graph.zip
+agents/terminal/result_processing.zip
+agents/terminal/normalizers.zip
+agents/terminal/router.zip
+agents/terminal/state.zip
+agents/terminal/prompts.zip
 agents/terminal/result_processing/__pycache__
 agents/terminal/result_processing/normalizers/__pycache__
 .vs

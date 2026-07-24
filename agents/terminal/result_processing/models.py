@@ -141,3 +141,16 @@ class ArtifactDecision(BaseModel):
 
     artifact: ArtifactCandidate | None = None
     
+class RuntimeProcessingResult(BaseModel):
+    """
+    Output of the Runtime Processing Pipeline.
+
+    This object contains everything required to update runtime memory.
+    It intentionally does not mutate state itself.
+    """
+
+    normalized_result: NormalizedResult
+
+    artifact_decision: ArtifactDecision
+
+    memory_update: MemoryUpdateProposal

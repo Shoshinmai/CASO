@@ -14,6 +14,7 @@ from agents.terminal.models import (
     TaskContext,
     ThreadMemory,
 )
+from agents.terminal.result_processing.models import RuntimeProcessingResult
 
 
 class TerminalState(TypedDict):
@@ -84,6 +85,8 @@ class TerminalState(TypedDict):
     compressed_observation: str
 
     observation_input: ObservationInput | None
+    
+    runtime_processing_result: RuntimeProcessingResult | None
 
     artifact_ids: list[str]
 

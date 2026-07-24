@@ -101,6 +101,8 @@ def normalize_read_artifact(
     """
     Normalize read_artifact results.
     """
+    print("\n========== READ_ARTIFACT NORMALIZER ==========")
+    print(raw_result)
 
     if not raw_result.get("success", False):
         return _build_normalized_result(
@@ -120,9 +122,7 @@ def normalize_read_artifact(
 
     facts = [
         Fact(
-            statement=(
-                f"Read artifact {artifact_id} " f"(lines {start_line}-{end_line})."
-            ),
+            statement=(f"Read artifact lines " f"(lines {start_line}-{end_line})."),
             source=tool_name,
         ),
     ]
@@ -135,6 +135,27 @@ def normalize_read_artifact(
             )
         )
 
+    artifact = ArtifactCandidate(
+        artifact_type="artifact_content",
+        summary=(
+            f"Contents of artifact "
+            f"{artifact_id} "
+            f"(lines {start_line}-{end_line})."
+        ),
+        data={
+            "content": raw_result.get("content", ""),
+            "artifact_id": artifact_id,
+            "start_line": start_line,
+            "end_line": end_line,
+            "has_more": raw_result.get(
+                "has_more",
+                False,
+            ),
+        },
+    )
+    print("\n========== GENERATED ARTIFACT ==========")
+    print(artifact)
+
     return _build_normalized_result(
         tool_name=tool_name,
         attempt=attempt,
@@ -142,5 +163,5 @@ def normalize_read_artifact(
         progress_made=True,
         facts=facts,
         resources=[],
-        artifact=None,
+        artifact=artifact,
     )

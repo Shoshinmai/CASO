@@ -35,14 +35,8 @@ def message_adapter_node(state: TerminalState):
         raw_result=raw_result,
         attempt=1,
     )
-    if not processed_result:
-        print("\nPROCESSED RESULT")
-        print(state["active_memory"])
-        print("NONE")
-    else:
-        print("\nPROCESSED RESULT")
-        print(state["active_memory"])
-        print(processed_result)
+    print("\n========== RUNTIME PROCESSING ==========")
+    print(processed_result)
 
     observation_input = ObservationInput(
         source="tool",
@@ -55,5 +49,7 @@ def message_adapter_node(state: TerminalState):
 
     print("\n[MESSAGE ADAPTER]")
     print(observation_input)
-
-    return {"observation_input": observation_input}
+    return {
+        "observation_input": observation_input,
+        "runtime_processing_result": processed_result,
+    }

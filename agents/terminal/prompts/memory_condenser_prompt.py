@@ -76,17 +76,59 @@ Bad:
 
 discovered_resources
 
-Store ONLY resources that satisfy at least one of these:
+Discovered resources are STRICTLY EXTRACTIVE.
 
-- Directly relevant to the CURRENT goal.
-- Likely to be revisited later.
-- Important project entry points.
-- Key files, directories or documents.
+Each resource MUST satisfy ALL of the following:
 
-Do NOT copy every discovered resource.
+- It appears explicitly in the OBSERVATION.
+- It is relevant to the CURRENT goal.
+- It is likely to be revisited later.
 
-If an artifact stores the complete resource list,
-only keep the important ones.
+IMPORTANT:
+
+Copy resource identifiers EXACTLY as they appear.
+
+Never:
+
+- rename resources
+- infer filenames
+- infer directories
+- infer file extensions
+- infer entry points
+- invent missing files
+- reconstruct paths
+
+If a resource identifier does NOT appear verbatim in the
+observation, DO NOT include it.
+
+Good
+
+Observation
+Resources
+- plan_generator.py
+- prompt_builder.py
+
+Output
+- plan_generator.py
+- prompt_builder.py
+
+Bad
+
+Observation
+Resources
+- plan_generator.py
+
+Output
+- planner.py
+- planner/planner.py
+- planner/main.py
+
+These are hallucinations because they never appeared in
+the observation.
+
+If an Artifact stores the complete resource list,
+only retain the small subset that is directly useful for
+the CURRENT goal.
 
 --------------------------------------------------
 
@@ -153,8 +195,17 @@ IMPORTANT RULES
 
 10. Return ONLY information introduced by THIS observation.
 
-11. If this observation adds nothing useful, return an empty
-    MemoryUpdateProposal.
+11. Resource identifiers are copied, not generated.
+
+12. Every discovered resource MUST appear verbatim in the observation.
+
+13. Never "correct", "complete", or "guess" filenames or paths.
+
+14. When uncertain about a resource identifier, omit it.
+
+15. It is always preferable to omit a resource than to invent one.
+
+16. If this observation adds nothing useful, return an empty MemoryUpdateProposal.
 
 ==================================================
 MEMORY PHILOSOPHY
@@ -402,6 +453,54 @@ Reason
 The fact already exists in Active Memory.
 
 Do NOT repeat information already remembered.
+
+==================================================
+EXAMPLE 7
+==================================================
+
+CURRENT GOAL
+
+Understand how the planner is implemented.
+
+--------------------------------------------------
+OBSERVATION
+--------------------------------------------------
+
+Resources
+
+- plan_generator.py
+- prompt_builder.py
+- validator.py
+
+--------------------------------------------------
+BAD MEMORY UPDATE
+--------------------------------------------------
+
+discovered_resources
+
+- planner.py
+- planner/planner.py
+
+Reason
+
+Neither identifier appears in the observation.
+
+The Memory Condenser MUST NEVER infer filenames.
+
+--------------------------------------------------
+GOOD MEMORY UPDATE
+--------------------------------------------------
+
+discovered_resources
+
+- plan_generator.py
+- prompt_builder.py
+- validator.py
+
+Reason
+
+Every identifier is copied exactly from the observation.
+No filename or directory was invented.
 
 ==================================================
 OUTPUT

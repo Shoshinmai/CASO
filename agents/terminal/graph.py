@@ -20,8 +20,6 @@ from agents.terminal.tools import TOOLS
 
 from agents.terminal.nodes.safety import safety_filter_node
 
-from agents.terminal.nodes.executor import terminal_executor_node
-
 from agents.terminal.nodes.observer import terminal_observer_node
 
 checkpointer = MemorySaver()
@@ -39,8 +37,6 @@ builder.add_node(
 )
 builder.add_node("tools", tool_node)
 builder.add_node("safety_filter", safety_filter_node)
-
-builder.add_node("executor", terminal_executor_node)
 
 builder.add_node("observer", terminal_observer_node)
 builder.add_node("evaluator", terminal_evaluator_node)
@@ -74,11 +70,6 @@ builder.add_conditional_edges(
     validator_router,
     {"safety_filter": "safety_filter", "planner": "planner"},
 )
-
-builder.add_conditional_edges(
-    "safety_filter", safety_router, {"executor": "executor", END: END}
-)
-builder.add_edge("executor", "observation_manager")
 
 builder.add_edge("observation_manager", "observer")
 builder.add_edge("observer", "evaluator")

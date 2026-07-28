@@ -2,11 +2,7 @@ from agents.terminal.prompts.memory_condenser_prompt import MEMORY_CONDENSER_PRO
 from agents.terminal.result_processing.models import (
     MemoryUpdateProposal,
 )
-
-from langchain_core.output_parsers import PydanticOutputParser
 from llm.llmclient import call_nvidia, call_ollama
-
-
 
 def condense_memory(
     *,

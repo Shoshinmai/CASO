@@ -18,6 +18,7 @@ INLINE_CONTENT_TOOLS = {
     "read_file",
     "read_artifact",
     "run_terminal",
+    "search_artifact",
 }
 
 

@@ -18,6 +18,7 @@ def message_adapter_node(state: TerminalState):
     for message in reversed(messages):
         if isinstance(message, ToolMessage):
             latest_tool_message = message
+            print(f"\nLATEST TOOL MESSAGE --> {latest_tool_message}")
             break
 
     if latest_tool_message is None:
@@ -37,6 +38,7 @@ def message_adapter_node(state: TerminalState):
     )
     print("\n========== RUNTIME PROCESSING ==========")
     print(processed_result)
+    print(state["success"])
 
     observation_input = ObservationInput(
         source="tool",

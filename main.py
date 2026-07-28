@@ -269,7 +269,7 @@
 
 #Langgraph integration
 
-from graph.graph_builder import graph
+from graph_.graph_builder import graph
 from langgraph.types import Command
 
 config = {"configurable": {"thread_id": "caso-3"}}

@@ -138,13 +138,20 @@ class ArtifactRetriever:
                 }
             )
 
-        return {
-            "artifact_id": artifact_id,
-            "query": query,
-            "count": len(matches),
-            "matches": matches,
-            "truncated": truncated,
-        }
+        try:
+            return {
+                "success": True,
+                "artifact_id": artifact_id,
+                "query": query,
+                "count": len(matches),
+                "matches": matches,
+                "truncated": truncated,
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+            }
 
     def read(
         self,
@@ -201,17 +208,24 @@ class ArtifactRetriever:
 
         next_start_line = end_line + 1 if has_more else None
 
-        return {
-            "artifact_id": artifact_id,
-            "artifact_type": artifact.artifact_type,
-            "summary": artifact.summary,
-            "start_line": start_line,
-            "end_line": end_line,
-            "lines_returned": lines_returned,
-            "has_more": has_more,
-            "next_start_line": next_start_line,
-            "content": "\n".join(selected_lines),
-        }
+        try:
+            return {
+                "success": True,
+                "artifact_id": artifact_id,
+                "artifact_type": artifact.artifact_type,
+                "summary": artifact.summary,
+                "start_line": start_line,
+                "end_line": end_line,
+                "lines_returned": lines_returned,
+                "has_more": has_more,
+                "next_start_line": next_start_line,
+                "content": "\n".join(selected_lines),
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+            }
 
     # @staticmethod
     # def find_file(artifact_id: str, filename: str):

@@ -49,7 +49,12 @@ def normalize_search_artifact(
     Normalize search_artifact results.
     """
 
-    if not raw_result.get("success", False):
+    print("\n========== SEARCH_ARTIFACT NORMALIZER ==========")
+    print(raw_result)
+    print(raw_result.get("success"))
+    
+    if not raw_result.get("success"):
+        print("\nenter")
         return _build_normalized_result(
             tool_name=tool_name,
             attempt=attempt,
@@ -81,14 +86,64 @@ def normalize_search_artifact(
             )
         )
 
+    resources: list[Resource] = []
+
+    for match in raw_result.get("matches", []):
+
+        snippet = match.get("snippet", "").strip()
+
+        # remove surrounding quotes
+        snippet = snippet.strip('"')
+
+        # artifact stores escaped backslashes
+        snippet = snippet.replace("\\\\", "\\")
+
+        resource_type = "directory" if "." not in snippet.split("\\")[-1] else "file"
+
+        resources.append(
+            Resource(
+                type=resource_type,
+                identifier=snippet,
+                metadata={
+                    "line": match.get("line"),
+                },
+            )
+        )
+
+    artifact = ArtifactCandidate(
+        artifact_type="artifact_search_results",
+        summary=(f'{count} matches for "{query}"'),
+        data={
+            "query": query,
+            "matches": raw_result["matches"],
+        },
+    )
+    
+    if count == 0:
+        progress_made = False
+    else:
+        progress_made = True
+        
+    dem = _build_normalized_result(
+        tool_name=tool_name,
+        attempt=attempt,
+        success=True,
+        progress_made=progress_made,
+        facts=facts,
+        resources=resources,
+        artifact=artifact,
+    )
+    print("\n==========SEARCH RESULT==========")
+    print(dem)
+
     return _build_normalized_result(
         tool_name=tool_name,
         attempt=attempt,
         success=True,
-        progress_made=bool(count),
+        progress_made=progress_made,
         facts=facts,
-        resources=[],
-        artifact=None,
+        resources=resources,
+        artifact=artifact,
     )
 
 

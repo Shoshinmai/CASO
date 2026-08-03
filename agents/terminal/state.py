@@ -35,7 +35,7 @@ class TerminalState(TypedDict):
 
     persistent_memory: PersistentMemory
 
-    ephemeral: EphemeralExecutionState
+    ephemeral_execution_state: EphemeralExecutionState
 
 
     # ==========================================================
@@ -82,8 +82,6 @@ class TerminalState(TypedDict):
 
     raw_observation: str
 
-    compressed_observation: str
-
     observation_input: ObservationInput | None
     
     runtime_processing_result: RuntimeProcessingResult | None
@@ -98,17 +96,4 @@ class TerminalState(TypedDict):
         "command_output",
     ]
 
-    observation_summary: str
-
-    observation_conclusion: str
-
     planner_output: Optional[PlanningOutput]
-
-
-    # ==========================================================
-    # DEPRECATED MEMORY FIELD
-    #
-    # Retained only until the old scratchpad pipeline is removed.
-    # ==========================================================
-
-    scratchpad: str

@@ -50,30 +50,7 @@ def mutate_state(
     """
 
     active_memory = state.get("active_memory")
-
-    # --------------------------------------------------
-    # Known Facts
-    # --------------------------------------------------
-
-    append_unique(
-        target=active_memory.known_facts,
-        incoming=proposal.known_facts,
-        key=lambda fact: fact.statement,
-    )
-
-    # --------------------------------------------------
-    # Discovered Resources
-    # --------------------------------------------------
-
-    append_unique(
-        target=active_memory.discovered_resources,
-        incoming=proposal.discovered_resources,
-        key=lambda resource: (
-            resource.type,
-            resource.identifier,
-        ),
-    )
-
+    
     # --------------------------------------------------
     # Completed Work
     # --------------------------------------------------
@@ -92,4 +69,27 @@ def mutate_state(
         target=active_memory.unresolved_needs,
         incoming=proposal.unresolved_needs,
         key=lambda item: item,
+    )
+
+    # --------------------------------------------------
+    # Discovered Resources
+    # --------------------------------------------------
+
+    append_unique(
+        target=active_memory.discovered_resources,
+        incoming=proposal.discovered_resources,
+        key=lambda resource: (
+            resource.type,
+            resource.identifier,
+        ),
+    )
+
+    # --------------------------------------------------
+    # Known Facts
+    # --------------------------------------------------
+
+    append_unique(
+        target=active_memory.known_facts,
+        incoming=proposal.known_facts,
+        key=lambda fact: fact.statement,
     )

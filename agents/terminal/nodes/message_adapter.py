@@ -2,6 +2,7 @@ import json
 
 from langchain_core.messages import ToolMessage
 
+from agents.terminal.memory.execution_manager import ExecutionMemoryManager
 from agents.terminal.state import TerminalState
 from agents.terminal.models import ObservationInput
 from agents.terminal.result_processing.processor import (
@@ -39,6 +40,20 @@ def message_adapter_node(state: TerminalState):
     print("\n========== RUNTIME PROCESSING ==========")
     print(processed_result)
     print(state["success"])
+    success = raw_result.get("success", True) if isinstance(raw_result, dict) else True
+
+    ephemeral = state.get("ephemeral_execution_state")
+
+    if ephemeral is not None and ephemeral.current_attempt_id is not None:
+        ExecutionMemoryManager.finish_attempt(
+            execution_memory=state["execution_memory"],
+            attempt_id=ephemeral.current_attempt_id,
+            runtime_result=processed_result,
+            success=success,
+            error=None,
+        )
+    print("[MESSAGE ADAPTER]")
+    print("Current Attempt:", ephemeral)
 
     observation_input = ObservationInput(
         source="tool",
@@ -54,4 +69,5 @@ def message_adapter_node(state: TerminalState):
     return {
         "observation_input": observation_input,
         "runtime_processing_result": processed_result,
+        "execution_memory": state["execution_memory"],
     }

@@ -4,12 +4,13 @@ from typing import Any, Literal
 from uuid import uuid4
 from pydantic import BaseModel, Field
 
-from agents.terminal.result_processing.models import Fact, Resource
-
+from agents.terminal.result_processing.models import ExecutionOutcome, Fact, Resource
 
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
 class TerminalAction(BaseModel):
 
     action_type: Literal["terminal_command", "artifact_query", "tool_call"]
@@ -240,8 +241,6 @@ class ReadArtifactInput(BaseModel):
     )
 
 
-
-
 class TaskStatus(StrEnum):
     """
     Lifecycle state of a Terminal Agent task.
@@ -287,6 +286,7 @@ class MemoryStatus(StrEnum):
     INVALIDATED = "invalidated"
     ARCHIVED = "archived"
 
+
 class TaskContext(BaseModel):
     """
     Identity and lifecycle information for one
@@ -300,16 +300,13 @@ class TaskContext(BaseModel):
 
     thread_id: str = Field(
         description=(
-            "Identifier of the conversation or thread "
-            "that owns this task."
+            "Identifier of the conversation or thread " "that owns this task."
         ),
     )
 
     goal: str = Field(
         min_length=1,
-        description=(
-            "Original goal assigned to the Terminal Agent."
-        ),
+        description=("Original goal assigned to the Terminal Agent."),
     )
 
     status: TaskStatus = Field(
@@ -326,6 +323,7 @@ class TaskContext(BaseModel):
         default_factory=utc_now,
         description="UTC timestamp of the latest task update.",
     )
+
 
 class ActiveTaskMemory(BaseModel):
     """
@@ -411,12 +409,12 @@ class ExecutionAttempt(BaseModel):
         description=("Current lifecycle status of the execution attempt."),
     )
 
-    outcome: str | None = Field(
+    outcome: ExecutionOutcome | str | None = Field(
         default=None,
         description=("Compact description of what happened during execution."),
     )
 
-    progress_made: bool | None = Field(
+    progress_made: list[str] | bool | None = Field(
         default=None,
         description=(
             "Whether the attempt made meaningful progress toward " "the task goal."
@@ -438,6 +436,13 @@ class ExecutionAttempt(BaseModel):
         description=("UTC timestamp when the attempt finished."),
     )
 
+    artifact_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Identifiers of artifacts created during this " "execution attempt."
+        ),
+    )
+
 
 class ExecutionMemory(BaseModel):
     """
@@ -452,6 +457,7 @@ class ExecutionMemory(BaseModel):
         default_factory=list,
         description=("Ordered execution attempts performed during the task."),
     )
+
 
 class ArtifactReference(BaseModel):
     """
@@ -469,32 +475,25 @@ class ArtifactReference(BaseModel):
 
     artifact_type: str = Field(
         min_length=1,
-        description=(
-            "Type of information stored by the artifact."
-        ),
+        description=("Type of information stored by the artifact."),
     )
 
     summary: str = Field(
         default="",
-        description=(
-            "Compact description of the artifact's contents."
-        ),
+        description=("Compact description of the artifact's contents."),
     )
 
     source: str = Field(
         min_length=1,
-        description=(
-            "Capability or subsystem that produced the artifact."
-        ),
+        description=("Capability or subsystem that produced the artifact."),
     )
 
     scope: MemoryScope = Field(
         default=MemoryScope.TASK,
-        description=(
-            "Lifetime and visibility scope of the artifact."
-        ),
+        description=("Lifetime and visibility scope of the artifact."),
     )
-    
+
+
 class ThreadMemory(BaseModel):
     """
     Context retained across multiple Terminal Agent tasks
@@ -528,7 +527,8 @@ class ThreadMemory(BaseModel):
             "this conversation thread."
         ),
     )
-    
+
+
 class PersistentMemoryEntry(BaseModel):
     """
     One durable piece of knowledge retained across Terminal Agent
@@ -540,23 +540,18 @@ class PersistentMemoryEntry(BaseModel):
 
     memory_id: str = Field(
         default_factory=lambda: str(uuid4()),
-        description=(
-            "Unique identifier of the persistent memory entry."
-        ),
+        description=("Unique identifier of the persistent memory entry."),
     )
 
     content: str = Field(
         min_length=1,
-        description=(
-            "Stable reusable knowledge represented by this memory."
-        ),
+        description=("Stable reusable knowledge represented by this memory."),
     )
 
     namespace: str = Field(
         min_length=1,
         description=(
-            "Logical namespace used to organize and retrieve "
-            "persistent memories."
+            "Logical namespace used to organize and retrieve " "persistent memories."
         ),
     )
 
@@ -572,40 +567,32 @@ class PersistentMemoryEntry(BaseModel):
         default=1.0,
         ge=0.0,
         le=1.0,
-        description=(
-            "Confidence that the stored knowledge is accurate."
-        ),
+        description=("Confidence that the stored knowledge is accurate."),
     )
 
     status: MemoryStatus = Field(
         default=MemoryStatus.ACTIVE,
-        description=(
-            "Current lifecycle status of the persistent memory."
-        ),
+        description=("Current lifecycle status of the persistent memory."),
     )
 
     supersedes: str | None = Field(
         default=None,
         description=(
-            "Identifier of an older persistent memory entry "
-            "replaced by this entry."
+            "Identifier of an older persistent memory entry " "replaced by this entry."
         ),
     )
 
     created_at: datetime = Field(
         default_factory=utc_now,
-        description=(
-            "UTC timestamp when the memory was created."
-        ),
+        description=("UTC timestamp when the memory was created."),
     )
 
     updated_at: datetime = Field(
         default_factory=utc_now,
-        description=(
-            "UTC timestamp of the latest memory update."
-        ),
+        description=("UTC timestamp of the latest memory update."),
     )
-    
+
+
 class PersistentMemory(BaseModel):
     """
     Relevant persistent knowledge loaded for the current
@@ -619,11 +606,11 @@ class PersistentMemory(BaseModel):
     entries: list[PersistentMemoryEntry] = Field(
         default_factory=list,
         description=(
-            "Persistent memory entries relevant to the "
-            "current Terminal Agent task."
+            "Persistent memory entries relevant to the " "current Terminal Agent task."
         ),
     )
-    
+
+
 class EphemeralExecutionState(BaseModel):
     """
     Temporary execution data used during the current Terminal Agent
@@ -635,24 +622,19 @@ class EphemeralExecutionState(BaseModel):
 
     planning_output: PlanningOutput | None = Field(
         default=None,
-        description=(
-            "Current planning decision produced by the Planner."
-        ),
+        description=("Current planning decision produced by the Planner."),
     )
 
     raw_result: dict[str, Any] | str | None = Field(
         default=None,
         description=(
-            "Unprocessed result produced by the current capability "
-            "execution."
+            "Unprocessed result produced by the current capability " "execution."
         ),
     )
 
     current_error: str | None = Field(
         default=None,
-        description=(
-            "Error associated with the current execution cycle."
-        ),
+        description=("Error associated with the current execution cycle."),
     )
 
     evaluation: EvaluatorDecision | None = Field(
@@ -662,7 +644,15 @@ class EphemeralExecutionState(BaseModel):
             "the execution result."
         ),
     )
-    
+
+    current_attempt_id: str | None = Field(
+        default=None,
+        description=(
+            "Identifier of the execution attempt currently being " "processed."
+        ),
+    )
+
+
 class TerminalTaskInput(BaseModel):
     """
     External input used to start a new Terminal Agent task.
@@ -674,7 +664,5 @@ class TerminalTaskInput(BaseModel):
 
     goal: str = Field(
         min_length=1,
-        description=(
-            "Goal the Terminal Agent should accomplish."
-        ),
+        description=("Goal the Terminal Agent should accomplish."),
     )

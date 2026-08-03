@@ -1,10 +1,7 @@
-from langchain_core.messages import AIMessage
-
-from agents.terminal.models import PlanningOutput
 from agents.terminal.prompts.tool_compiler_prompt import (
     TOOL_SELECTOR_PROMPT,
 )
-from llm.llmclient import call_ollama
+from llm.llmclient import call_nvidia, call_ollama
 
 
 def terminal_tool_selector_node(state):
@@ -27,11 +24,18 @@ def terminal_tool_selector_node(state):
         model="qwen2.5:7b-instruct-q3_K_M",
         tool=True,
     )
+    
+    # response = call_nvidia(
+    #     prompt,
+    #     "meta/llama-3.1-8b-instruct",
+    #     # "nvidia/nemotron-3-ultra-550b-a55b",
+    #     tool=True,
+    # )
     print("\n========== TOOL SELECTOR ==========")
 
-    print(type(response))
+    # print(type(response))
 
-    print()
+    # print()
 
     print(response)
     

@@ -1,4 +1,5 @@
 from agents.terminal.memory import artifact_store
+from agents.terminal.memory.execution_manager import ExecutionMemoryManager
 from agents.terminal.result_processing.models import ArtifactAction
 from agents.terminal.result_processing.state_mutator import mutate_state
 from agents.terminal.state import TerminalState
@@ -35,6 +36,19 @@ def observation_manager_node(state: TerminalState):
         )
 
         artifact_ids.append(artifact_id)
+    
+    ephemeral = state.get("ephemeral_execution_state")
+
+    if (
+        artifact_id is not None
+        and ephemeral is not None
+        and ephemeral.current_attempt_id is not None
+    ):
+        ExecutionMemoryManager.add_artifact(
+            execution_memory=state["execution_memory"],
+            attempt_id=ephemeral.current_attempt_id,
+            artifact_id=artifact_id,
+        )
         
     # ------------------------------------------
     # Deterministic memory update
@@ -48,8 +62,14 @@ def observation_manager_node(state: TerminalState):
     # ------------------------------------------
     # Transitional compatibility
     # ------------------------------------------
+    
+    ephemeral = state.get("ephemeral_execution_state")
+
+    if ephemeral is not None:
+        ephemeral.current_attempt_id = None
 
     return {
         "artifact_ids": artifact_ids,
         "active_memory": state["active_memory"],
+        "execution_memory": state["execution_memory"],
     }

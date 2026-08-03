@@ -2,6 +2,10 @@ from agents.terminal.models import EvaluatorDecision
 import json
 from agents.terminal.prompts.evaluator_prompt import TERMINAL_EVALUATOR_PROMPT
 from agents.terminal.state import TerminalState
+from agents.terminal.utils.evaluator_context_builder import build_evaluator_context
+from agents.terminal.utils.evaluator_observation_builder import (
+    build_evaluator_observation,
+)
 from llm.llmclient import call_groq, call_ollama
 
 
@@ -14,26 +18,33 @@ def terminal_evaluator_node(state: TerminalState):
 
     if planner_output is not None:
         strategy = planner_output.planning_step.strategy
-    latest_result = observation.raw_result
 
-    if isinstance(latest_result, dict):
-        latest_result = json.dumps(latest_result, indent=2)
+    latest_execution = build_evaluator_observation(
+    normalized_result=state[
+        "runtime_processing_result"
+    ].normalized_result,
+    artifact_decision=state[
+        "runtime_processing_result"
+    ].artifact_decision,
+)
+
+
+    execution_summary = build_evaluator_context(state["execution_memory"])
 
     prompt = TERMINAL_EVALUATOR_PROMPT.format(
         goal=state["goal"],
         strategy=strategy,
-        scratchpad=state.get("scratchpad", ""),
-        latest_tool=observation.tool_name,
-        latest_result=latest_result,
+        execution_summary=execution_summary,
+        latest_execution=latest_execution,
     )
-    print("\n[CURRENT STRATEGY]")
-    print(strategy)
+    print("\n[EXECUTION SUMMARY]")
+    print(execution_summary)
 
     print("\n[LATEST TOOL]")
     print(observation.tool_name)
 
-    print("\n[LATEST TOOL RESULT]")
-    print(latest_result)
+    print("\n[LATEST Execution Summary]")
+    print(latest_execution)
 
     response = call_ollama(
         prompt, "qwen2.5:7b-instruct-q3_K_M", True, EvaluatorDecision

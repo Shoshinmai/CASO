@@ -22,10 +22,10 @@ Original User Goal
 {goal}
 
 --------------------------------------------------
-Execution History
+Execution Summary
 --------------------------------------------------
 
-{scratchpad}
+{execution_summary}
 
 --------------------------------------------------
 Current Strategy
@@ -34,22 +34,16 @@ Current Strategy
 {strategy}
 
 --------------------------------------------------
-Latest Tool
+Latest Execution
 --------------------------------------------------
 
-{latest_tool}
-
---------------------------------------------------
-Latest Tool Result
---------------------------------------------------
-
-{latest_result}
+{latest_execution}
 
 --------------------------------------------------
 CORE COMPLETION PRINCIPLE
 --------------------------------------------------
 
-A successful tool call may represent only INTERMEDIATE PROGRESS.
+A successful execution may represent only INTERMEDIATE PROGRESS.
 
 Always distinguish between:
 
@@ -119,11 +113,11 @@ Follow this procedure:
 1. Identify the exact action or information requested in the
    ORIGINAL USER GOAL.
 
-2. Determine what the latest tool call actually accomplished.
+2. Determine what the latest execution actually accomplished.
 
 3. Ask:
 
-   "Did this result directly complete the original requested action,
+   "Did this execution directly complete the original requested action,
    or did it only provide information needed for another step?"
 
 4. If another step is required, return CONTINUE.
@@ -138,14 +132,15 @@ Examples
 Goal:
 Locate Hitman 2 on the E drive.
 
-Latest Tool:
-search_files
+Latest Execution:
 
-Latest Tool Result:
-{{
-    "count": 0,
-    "matches": []
-}}
+Tool: search_files
+Success: No
+Progress Made: No
+Outcome: The requested file could not be located.
+Resources Discovered: 0
+Facts Extracted: 0
+Artifact Created: No
 
 Decision:
 CONTINUE
@@ -158,123 +153,105 @@ The requested item has not been located.
 Goal:
 Find main.py.
 
-Latest Tool:
-search_files
+Latest Execution:
 
-Latest Tool Result:
-{{
-    "count": 1,
-    "matches": [
-        "D:\\AI_dev\\CASO\\main.py"
-    ]
-}}
+Tool: search_files
+Success: Yes
+Progress Made: Yes
+Outcome: The requested file was successfully located.
+Resources Discovered: 1
+Facts Extracted: 0
+Artifact Created: Yes
 
 Decision:
 DONE
 
 Reason:
-The original goal only requested locating the file, and the file
-was successfully located.
+The original goal only requested locating the file.
 
 ---
 
 Goal:
 Read the code of PlanningOutput.
 
-Latest Tool:
-search_content
+Latest Execution:
 
-Latest Tool Result:
-{{
-    "count": 1,
-    "matches": [
-        {{
-            "file": "D:\\AI_dev\\CASO\\agents\\terminal\\models.py",
-            "line": 85,
-            "snippet": "class PlanningOutput(BaseModel):"
-        }}
-    ]
-}}
+Tool: search_content
+Success: Yes
+Progress Made: Yes
+Outcome: The location of PlanningOutput was identified.
+Resources Discovered: 1
+Facts Extracted: 0
+Artifact Created: Yes
 
 Decision:
 CONTINUE
 
 Reason:
-The location of PlanningOutput was discovered, but its code has not
-yet been read.
+The code has not yet been read.
 
 ---
 
 Goal:
 Read the code of PlanningOutput.
 
-Latest Tool:
-read_file
+Latest Execution:
 
-Latest Tool Result:
-{{
-    "success": true,
-    "path": "D:\\AI_dev\\CASO\\agents\\terminal\\models.py",
-    "start_line": 85,
-    "end_line": 100,
-    "lines_returned": 16,
-    "content": "class PlanningOutput(BaseModel): ..."
-}}
+Tool: read_file
+Success: Yes
+Progress Made: Yes
+Outcome: The requested file contents were successfully read.
+Resources Discovered: 0
+Facts Extracted: 4
+Artifact Created: Yes
 
 Decision:
 DONE
 
 Reason:
-The requested code has actually been read.
+The requested code has been read.
 
 ---
 
 Goal:
 Delete old.log.
 
-Latest Tool:
-search_files
+Latest Execution:
 
-Latest Tool Result:
-{{
-    "count": 1,
-    "matches": [
-        "D:\\logs\\old.log"
-    ]
-}}
+Tool: search_files
+Success: Yes
+Progress Made: Yes
+Outcome: The target file was located.
+Resources Discovered: 1
+Facts Extracted: 0
+Artifact Created: Yes
 
 Decision:
 CONTINUE
 
 Reason:
-The file was located, but the requested deletion has not been
-performed.
+The requested deletion has not yet been performed.
 
 ---
 
 Goal:
 Find where DatabaseManager is defined.
 
-Latest Tool:
-search_content
+Latest Execution:
 
-Latest Tool Result:
-{{
-    "count": 1,
-    "matches": [
-        {{
-            "file": "database.py",
-            "line": 42,
-            "snippet": "class DatabaseManager:"
-        }}
-    ]
-}}
+Tool: search_content
+Success: Yes
+Progress Made: Yes
+Outcome: The requested symbol definition was located.
+Resources Discovered: 1
+Facts Extracted: 0
+Artifact Created: Yes
 
 Decision:
 DONE
 
 Reason:
-The original goal only requested finding where the symbol is defined.
+The original goal only requested locating the symbol.
 
 --------------------------------------------------
 IMPORTANT FINAL RULE
@@ -282,7 +259,7 @@ IMPORTANT FINAL RULE
 
 Never return DONE merely because:
 
-- a tool succeeded
+- an execution succeeded
 - a search returned matches
 - a file was located
 - relevant information was discovered

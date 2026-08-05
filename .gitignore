@@ -34,6 +34,7 @@ agents/terminal/router.zip
 agents/terminal/state.zip
 agents/terminal/prompts.zip
 agents/terminal/result_processing/__pycache__
+agents/terminal/runtime/__pycache__
 agents/terminal/result_processing/normalizers/__pycache__
 .vs
 __pycache__

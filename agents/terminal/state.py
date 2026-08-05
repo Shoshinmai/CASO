@@ -15,6 +15,7 @@ from agents.terminal.models import (
     ThreadMemory,
 )
 from agents.terminal.result_processing.models import RuntimeProcessingResult
+from agents.terminal.runtime.models import RuntimeState
 
 
 class TerminalState(TypedDict):
@@ -36,7 +37,8 @@ class TerminalState(TypedDict):
     persistent_memory: PersistentMemory
 
     ephemeral_execution_state: EphemeralExecutionState
-
+    
+    runtime_state: RuntimeState
 
     # ==========================================================
     # GRAPH / TOOL PROTOCOL

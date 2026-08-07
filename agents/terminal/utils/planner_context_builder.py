@@ -1,14 +1,18 @@
 from typing import Any
 
-from agents.terminal.utils.memory_formatter import format_active_memory
+from agents.terminal.task_plan.models import TaskItemStatus
+from agents.terminal.utils.memory_formatter import (
+    format_active_memory,
+    format_execution_summary,
+    format_task_plan,
+)
 
 
 def build_planner_context(
     state: dict[str, Any],
-    capability_prompt: str,
 ) -> dict[str, Any]:
     """
-    Build the complete context consumed by the planner prompt.
+    Build the complete context consumed by the strategic planner.
 
     This is the single source of truth for every placeholder used by
     TERMINAL_PLANNER_PROMPT.
@@ -17,15 +21,18 @@ def build_planner_context(
     return {
         "goal": _build_goal(state),
         "active_memory": _build_active_memory(state),
-        "artifact_context": _build_artifact_context(state),
-        "validation_error": _build_validation_error(state),
-        "safety_reason": _build_safety_reason(state),
-        "capabilities": capability_prompt,
+        "task_plan": _build_task_plan(state),
+        "execution_summary": _build_execution_summary(state),
     }
 
 
+# ----------------------------------------------------------------------
+# Individual Builders
+# ----------------------------------------------------------------------
+
+
 def _build_goal(state: dict[str, Any]) -> str:
-    return state["task"].goal
+    return state.get("task").goal
 
 
 def _build_active_memory(state: dict[str, Any]) -> str:
@@ -36,21 +43,19 @@ def _build_active_memory(state: dict[str, Any]) -> str:
     return memory if memory else "No task knowledge available."
 
 
-def _build_artifact_context(state: dict[str, Any]) -> str:
-    artifacts = state.get("artifact_references", [])
+def _build_task_plan(state: dict[str, Any]) -> str:
+    task_plan = state.get("task_plan")
 
-    if not artifacts:
-        return "None"
+    if task_plan is None:
+        return "No task plan exists yet."
 
-    return "\n".join(
-        f"- {artifact.identifier}"
-        for artifact in artifacts
-    )
+    return format_task_plan(task_plan)
 
 
-def _build_validation_error(state: dict[str, Any]) -> str:
-    return state.get("validation_error") or "None"
+def _build_execution_summary(state: dict[str, Any]) -> str:
+    execution_memory = state.get("execution_memory")
 
+    if execution_memory is None:
+        return "No execution history available."
 
-def _build_safety_reason(state: dict[str, Any]) -> str:
-    return state.get("safety_reason") or "None"
+    return format_execution_summary(execution_memory)

@@ -1,50 +1,91 @@
-from agents.terminal.prompts.tool_compiler_prompt import (
-    TOOL_SELECTOR_PROMPT,
-)
-from llm.llmclient import call_nvidia, call_ollama
+from __future__ import annotations
+
+from typing import Any
+from uuid import uuid4
+
+from langchain_core.messages import AIMessage
+from langchain_core.tools import BaseTool
+
+from agents.terminal.task_executor.models import ExecutionStep
+from agents.terminal.tools import TOOLS
 
 
-def terminal_tool_selector_node(state):
-    
-    print("\n===== TOOL SELECTOR STATE =====")
-    # print(state)
-    # print(type(state))
-    print(state.get("planner_output"))
+def compile_execution_step(
+    step: ExecutionStep,
+    tools: list[BaseTool] | None = None,
+) -> AIMessage:
+    """
+    Compile one ExecutionStep into a native LangChain tool call.
 
-    plan = state["planner_output"].planning_step
+    This function is deterministic.
 
-    prompt = TOOL_SELECTOR_PROMPT.format(
-        strategy=plan.strategy,
-        capability=plan.capability,
-        capability_input=plan.args,
-    )
+    It does not:
+    - select a capability
+    - modify the execution strategy
+    - call an LLM
+    - execute the capability
+    - retry failures
 
-    response = call_ollama(
-        prompt=prompt,
-        model="qwen2.5:7b-instruct-q3_K_M",
-        tool=True,
-    )
-    
-    # response = call_nvidia(
-    #     prompt,
-    #     "meta/llama-3.1-8b-instruct",
-    #     # "nvidia/nemotron-3-ultra-550b-a55b",
-    #     tool=True,
-    # )
-    print("\n========== TOOL SELECTOR ==========")
+    It only validates the selected capability and its arguments,
+    then constructs the AIMessage expected by ToolNode.
+    """
 
-    # print(type(response))
+    available_tools = tools if tools is not None else TOOLS
 
-    # print()
-
-    print(response)
-    
-    print("\n========== PLANNER OUTPUT ==========")
-    print(plan.model_dump())
-
-    print("\n========== TOOL CALL ==========")
-    print(response.tool_calls)
-
-    return {
-        "messages": [response],
+    tool_map = {
+        tool.name: tool
+        for tool in available_tools
     }
+
+    tool = tool_map.get(step.capability)
+
+    if tool is None:
+        raise ValueError(
+            f"Unknown capability '{step.capability}'. "
+            f"Available capabilities: "
+            f"{', '.join(sorted(tool_map))}"
+        )
+
+    arguments = _validate_arguments(
+        tool=tool,
+        arguments=step.arguments,
+    )
+
+    return AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": tool.name,
+                "args": arguments,
+                "id": f"call_{uuid4().hex}",
+                "type": "tool_call",
+            }
+        ],
+    )
+
+
+def _validate_arguments(
+    *,
+    tool: BaseTool,
+    arguments: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Validate and normalize arguments against the capability schema.
+    """
+
+    if tool.args_schema is None:
+        return arguments
+
+    try:
+        validated = tool.args_schema.model_validate(
+            arguments
+        )
+    except Exception as exc:
+        raise ValueError(
+            f"Invalid arguments for capability "
+            f"'{tool.name}': {exc}"
+        ) from exc
+
+    return validated.model_dump(
+        exclude_none=True
+    )

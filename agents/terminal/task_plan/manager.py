@@ -237,6 +237,32 @@ class TaskPlanManager:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def get_current_task(
+        task_plan: TaskPlan,
+    ) -> TaskItem | None:
+        """
+        Return the next executable task in the Task Plan.
+
+        A task is executable when:
+        - it is PENDING
+        - all dependencies are COMPLETED
+
+        Returns None if no executable task exists.
+        """
+        for task in task_plan.tasks:
+
+            if task.status != TaskItemStatus.PENDING:
+                continue
+
+            if TaskPlanManager._dependencies_completed(
+                task_plan,
+                task,
+            ):
+                return task
+
+        return None
+
+    @staticmethod
     def get_ready_tasks(
         *,
         plan: TaskPlan,
@@ -299,9 +325,7 @@ class TaskPlanManager:
         """
 
         completed_tasks = [
-            task
-            for task in plan.tasks
-            if task.status == TaskItemStatus.COMPLETED
+            task for task in plan.tasks if task.status == TaskItemStatus.COMPLETED
         ]
 
         plan.tasks = completed_tasks + list(tasks)

@@ -1,5 +1,6 @@
 from agents.terminal.models import (
     ActiveTaskMemory,
+    ArtifactReference,
     ExecutionMemory,
     ThreadMemory,
 )
@@ -182,3 +183,31 @@ def format_execution_summary(
         )
 
     return "\n".join(sections)
+
+def format_artifact_catalog(
+    artifact_references: list[ArtifactReference],
+) -> str:
+    """
+    Format available artifact metadata for LLM consumption.
+    """
+
+    if not artifact_references:
+        return "No artifacts available."
+
+    sections: list[str] = []
+
+    for artifact in artifact_references:
+
+        sections.append(
+            "\n".join(
+                [
+                    f"Artifact ID: {artifact.artifact_id}",
+                    f"Type: {artifact.artifact_type}",
+                    f"Source: {artifact.source}",
+                    f"Scope: {artifact.scope.value}",
+                    f"Summary: {artifact.summary or 'No summary.'}",
+                ]
+            )
+        )
+
+    return "\n\n".join(sections)

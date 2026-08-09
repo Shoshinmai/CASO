@@ -39,3 +39,4 @@ agents/terminal/result_processing/normalizers/__pycache__
 .vs
 __pycache__
 agents/terminal/task_plan.zip
+agents/terminal/runtime.zip

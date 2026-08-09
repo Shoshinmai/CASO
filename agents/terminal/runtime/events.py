@@ -55,6 +55,7 @@ class RuntimeEvent(StrEnum):
 
     CONTINUE_TASK = "continue_task"
     RETRY_TASK = "retry_task"
+    PLAN_UPDATE_REQUIRED = "plan_update_required"
     REPLAN_REQUIRED = "replan_required"
     GOAL_COMPLETED = "goal_completed"
 
@@ -83,7 +84,9 @@ _EXECUTION_EVENTS: Final = {
 
 _CRITIC_EVENTS: Final = {
     RuntimeEvent.CONTINUE_TASK,
+    RuntimeEvent.TASK_COMPLETED,    
     RuntimeEvent.RETRY_TASK,
+    RuntimeEvent.PLAN_UPDATE_REQUIRED,
     RuntimeEvent.REPLAN_REQUIRED,
     RuntimeEvent.GOAL_COMPLETED,
 }

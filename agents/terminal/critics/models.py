@@ -72,3 +72,59 @@ class CriticOutput(BaseModel):
             "Factual evidence supporting the Critic's decision."
         ),
     )
+    
+class CriticContext(BaseModel):
+    """
+    Structured context supplied to the Critic.
+
+    All fields are already formatted for direct insertion into
+    the Critic prompt.
+
+    The Critic receives only the relevant slice of the Task Plan,
+    not the complete runtime state.
+    """
+
+    overall_goal: str = Field(
+        min_length=1,
+        description=(
+            "Overall user goal represented by the current Task Plan."
+        ),
+    )
+
+    current_objective: str = Field(
+        min_length=1,
+        description=(
+            "Objective currently being evaluated."
+        ),
+    )
+
+    remaining_objectives: str = Field(
+        min_length=1,
+        description=(
+            "Relevant objectives that remain after or around the "
+            "current objective."
+        ),
+    )
+
+    execution_summary: str = Field(
+        min_length=1,
+        description=(
+            "Compact summary of execution attempts relevant to "
+            "the current objective."
+        ),
+    )
+
+    active_memory: str = Field(
+        min_length=1,
+        description=(
+            "Current task knowledge accumulated during execution."
+        ),
+    )
+
+    artifact_catalog: str = Field(
+        min_length=1,
+        description=(
+            "Compact metadata catalog of artifacts available as "
+            "evidence."
+        ),
+    )

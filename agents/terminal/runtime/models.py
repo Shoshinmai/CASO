@@ -9,6 +9,38 @@ from .events import RuntimeEvent
 from .modes import RuntimeMode
 
 
+class RuntimeEvidence(BaseModel):
+    """
+    Runtime-neutral evidence supporting a runtime decision.
+    """
+
+    source: str = Field(
+        min_length=1,
+    )
+
+    observation: str = Field(
+        min_length=1,
+    )
+
+
+class RuntimeDecisionContext(BaseModel):
+    """
+    Context attached to a runtime decision.
+
+    This preserves the semantic feedback produced by a
+    decision-making subsystem without coupling the runtime
+    to that subsystem's internal models.
+    """
+
+    rationale: str = Field(
+        min_length=1,
+    )
+
+    evidence: list[RuntimeEvidence] = Field(
+        min_length=1,
+    )
+
+
 class RuntimeState(BaseModel):
     """
     Represents the current state of the Terminal Agent runtime.
@@ -29,7 +61,8 @@ class RuntimeState(BaseModel):
     metadata: dict[str, Any] = Field(
         default_factory=dict,
     )
-    
+
+
 class RuntimeSnapshot(BaseModel):
     """
     Read-only snapshot of the runtime state.
@@ -40,7 +73,8 @@ class RuntimeSnapshot(BaseModel):
     last_event: RuntimeEvent | None
 
     iteration: int
-    
+
+
 def snapshot_runtime(
     runtime_state: RuntimeState,
 ) -> RuntimeSnapshot:

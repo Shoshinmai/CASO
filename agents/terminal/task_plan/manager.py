@@ -363,3 +363,27 @@ class TaskPlanManager:
             for task in plan.tasks
             if task.status == TaskItemStatus.COMPLETED
         }
+
+    @staticmethod
+    def _dependencies_completed(
+        plan: TaskPlan,
+        task: TaskItem,
+    ) -> bool:
+        """
+        Return True when all dependencies of the given task
+        have been completed.
+
+        A task with no dependencies is immediately executable.
+        """
+
+        if not task.dependencies:
+            return True
+
+        completed_tasks = TaskPlanManager._completed_task_ids(
+            plan,
+        )
+
+        return all(
+            dependency in completed_tasks
+            for dependency in task.dependencies
+        )

@@ -16,6 +16,8 @@ from agents.terminal.models import (
 )
 from agents.terminal.result_processing.models import RuntimeProcessingResult
 from agents.terminal.runtime.models import RuntimeState
+from agents.terminal.task_executor.models import ExecutionWorkflow
+from agents.terminal.task_plan.models import TaskPlan
 
 
 class TerminalState(TypedDict):
@@ -26,7 +28,7 @@ class TerminalState(TypedDict):
 
     task: TaskContext
 
-    active_memory: ActiveTaskMemory
+    active_memory: ActiveTaskMemory | None
 
     execution_memory: ExecutionMemory
 
@@ -39,6 +41,10 @@ class TerminalState(TypedDict):
     ephemeral_execution_state: EphemeralExecutionState
     
     runtime_state: RuntimeState
+    
+    task_plan: TaskPlan | None
+    
+    execution_workflow: ExecutionWorkflow | None
 
     # ==========================================================
     # GRAPH / TOOL PROTOCOL

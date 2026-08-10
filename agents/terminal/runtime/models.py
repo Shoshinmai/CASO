@@ -57,6 +57,8 @@ class RuntimeState(BaseModel):
     started_at: datetime = Field(
         default_factory=datetime.utcnow,
     )
+    
+    decision_context: RuntimeDecisionContext | None = None
 
     metadata: dict[str, Any] = Field(
         default_factory=dict,

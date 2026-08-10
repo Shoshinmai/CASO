@@ -38,10 +38,13 @@ def terminal_task_executor_node(state):
         subagent=True,
         state_model=ExecutorOutput,
     )
+    runtime_state = state.get("runtime_state")
+    if runtime_state is not None: 
+        runtime_state.decision_context = None
 
     print("\n========== EXECUTOR ==========")
     print(executor_output.model_dump())
 
     return {
-        "executor_output": executor_output,
+        "execution_workflow": executor_output.workflow,
     }

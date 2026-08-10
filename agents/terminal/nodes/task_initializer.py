@@ -52,8 +52,10 @@ def task_initializer_node(
         "execution_memory": ExecutionMemory(),
         "artifact_references": [],
         "thread_memory": thread_memory,
+        "task_plan": None,
+        "execution_workflow": None,
         "persistent_memory": PersistentMemory(),
-        "ephemeral": EphemeralExecutionState(),
+        "ephemeral_execution_state": EphemeralExecutionState(),
 
         # Transitional legacy reset
         "action_type": "",

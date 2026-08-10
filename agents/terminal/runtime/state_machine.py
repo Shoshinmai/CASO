@@ -73,13 +73,15 @@ _TRANSITIONS: dict[Transition, RuntimeMode] = {
     # Review
     # ================================================================
 
-    # Critic decided the current objective is not finished.
+    # Critic decided the current objective is not finished,
+    # but the existing execution approach remains valid.
     Transition(
         RuntimeMode.REVIEWING,
         RuntimeEvent.CONTINUE_TASK,
     ): RuntimeMode.EXECUTING,
 
-    # Retry same objective.
+    # Execution failed, but the current objective and strategy
+    # remain valid enough for another execution attempt.
     Transition(
         RuntimeMode.REVIEWING,
         RuntimeEvent.RETRY_TASK,
@@ -94,7 +96,14 @@ _TRANSITIONS: dict[Transition, RuntimeMode] = {
         RuntimeEvent.TASK_COMPLETED,
     ): RuntimeMode.EXECUTING,
 
-    # Strategy no longer valid.
+    # New information requires the rolling Task Plan to be
+    # extended or adjusted, while the overall strategy remains valid.
+    Transition(
+        RuntimeMode.REVIEWING,
+        RuntimeEvent.PLAN_UPDATE_REQUIRED,
+    ): RuntimeMode.PLANNING,
+
+    # Current strategy or important assumptions are no longer valid.
     Transition(
         RuntimeMode.REVIEWING,
         RuntimeEvent.REPLAN_REQUIRED,
@@ -169,3 +178,57 @@ class RuntimeStateMachine:
             for transition in _TRANSITIONS
             if transition.mode == mode
         )
+        
+import pytest
+
+
+def test_plan_update_required():
+    assert (
+        RuntimeStateMachine.transition(
+            current_mode=RuntimeMode.REVIEWING,
+            event=RuntimeEvent.PLAN_UPDATE_REQUIRED,
+        )
+        == RuntimeMode.PLANNING
+    )
+    
+def test_replan_required():
+    assert (
+        RuntimeStateMachine.transition(
+            current_mode=RuntimeMode.REVIEWING,
+            event=RuntimeEvent.REPLAN_REQUIRED,
+        )
+        == RuntimeMode.PLANNING
+    )
+    
+def test_plan_update_and_replan_have_same_runtime_mode():
+    plan_update_mode = RuntimeStateMachine.transition(
+        current_mode=RuntimeMode.REVIEWING,
+        event=RuntimeEvent.PLAN_UPDATE_REQUIRED,
+    )
+
+    replan_mode = RuntimeStateMachine.transition(
+        current_mode=RuntimeMode.REVIEWING,
+        event=RuntimeEvent.REPLAN_REQUIRED,
+    )
+
+    assert plan_update_mode == RuntimeMode.PLANNING
+    assert replan_mode == RuntimeMode.PLANNING
+
+    
+def test_invalid_runtime_transition():
+    with pytest.raises(InvalidRuntimeTransition):
+        RuntimeStateMachine.transition(
+            current_mode=RuntimeMode.FINISHED,
+            event=RuntimeEvent.RETRY_TASK,
+        )
+
+def test_can_transition():
+    assert RuntimeStateMachine.can_transition(
+        current_mode=RuntimeMode.REVIEWING,
+        event=RuntimeEvent.PLAN_UPDATE_REQUIRED,
+    )
+
+    assert not RuntimeStateMachine.can_transition(
+        current_mode=RuntimeMode.FINISHED,
+        event=RuntimeEvent.RETRY_TASK,
+    )

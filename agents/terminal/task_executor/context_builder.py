@@ -1,17 +1,28 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
-from agents.terminal.models import ActiveTaskMemory, ArtifactReference, ExecutionMemory
-from agents.terminal.task_plan.models import TaskPlan
+from agents.terminal.models import (
+    ActiveTaskMemory,
+    ArtifactReference,
+    ExecutionMemory,
+)
+from agents.terminal.task_executor.models import ExecutionContext
+from agents.terminal.task_plan.manager import TaskPlanManager
+from agents.terminal.task_plan.models import (
+    TaskItem,
+    TaskItemStatus,
+    TaskPlan,
+)
 from agents.terminal.utils.memory_formatter import (
     format_active_memory,
     format_artifact_catalog,
     format_execution_summary,
 )
-from agents.terminal.task_executor.models import ExecutionContext
-from agents.terminal.task_plan.manager import TaskPlanManager
-from agents.terminal.utils.tool_prompt_builder import build_capability_prompt
+from agents.terminal.utils.tool_prompt_builder import (
+    build_capability_prompt,
+)
 
 
 def build_execution_context(
@@ -19,12 +30,38 @@ def build_execution_context(
 ) -> ExecutionContext:
     """
     Build the structured context consumed by the Task Executor.
+
+    The Executor receives only the current executable task,
+    not the complete TaskPlan.
+
+    Runtime decision context is included when the Executor is
+    being invoked because of a previous runtime/Critic decision.
     """
 
-    task_plan = state["task_plan"]
+    task_plan = state.get("task_plan")
+
+    if task_plan is None:
+        raise ValueError(
+            "Cannot build execution context without a TaskPlan."
+        )
+
+    current_task = TaskPlanManager.get_current_task(
+        task_plan,
+    )
+
+    if current_task is None:
+        raise ValueError(
+            "Cannot build execution context because the TaskPlan "
+            "has no executable task."
+        )
 
     return ExecutionContext(
-        objective=_build_objective(task_plan),
+        task_goal=task_plan.goal,
+        task_metadata=_build_task_metadata(
+            task_plan=task_plan,
+            task=current_task,
+        ),
+        objective=current_task.objective,
         active_memory=_build_active_memory(
             state["active_memory"],
         ),
@@ -37,28 +74,58 @@ def build_execution_context(
         capabilities=_build_capabilities(
             state["capabilities"],
         ),
+        decision_context=_build_decision_context(
+            state,
+        ),
     )
 
-def _build_objective(
+
+def _build_task_metadata(
+    *,
     task_plan: TaskPlan,
+    task: TaskItem,
 ) -> str:
     """
-    Return the objective of the current executable task.
+    Build compact metadata describing the current task.
+
+    The full TaskPlan is intentionally not exposed to the Executor.
     """
 
-    current_task = TaskPlanManager.get_current_task(
-        task_plan,
+    completed_dependency_ids = {
+        candidate.task_id
+        for candidate in task_plan.tasks
+        if candidate.status == TaskItemStatus.COMPLETED
+    }
+
+    completed_dependencies = [
+        dependency
+        for dependency in task.dependencies
+        if dependency in completed_dependency_ids
+    ]
+
+    metadata = {
+        "task_id": task.task_id,
+        "priority": task.priority,
+        "status": task.status.value,
+        "dependencies": task.dependencies,
+        "completed_dependencies": completed_dependencies,
+        "blockers": task.blockers,
+        "success_criteria": task.success_criteria,
+    }
+
+    return json.dumps(
+        metadata,
+        indent=2,
+        ensure_ascii=False,
     )
-
-    if current_task is None:
-        return "No executable task."
-
-    return current_task.objective
 
 def _build_active_memory(
     active_memory: ActiveTaskMemory,
 ) -> str:
-    return format_active_memory(active_memory)
+    return format_active_memory(
+        active_memory,
+    )
+
 
 def _build_execution_summary(
     execution_memory: ExecutionMemory,
@@ -66,7 +133,8 @@ def _build_execution_summary(
     return format_execution_summary(
         execution_memory,
     )
-    
+
+
 def _build_artifact_catalog(
     artifact_references: list[ArtifactReference],
 ) -> str:
@@ -74,9 +142,52 @@ def _build_artifact_catalog(
         artifact_references,
     )
 
+
 def _build_capabilities(
     capabilities: list,
 ) -> str:
     return build_capability_prompt(
         capabilities,
     )
+
+
+def _build_decision_context(
+    state: dict[str, Any],
+) -> str:
+    """
+    Build the Executor-facing runtime decision context.
+
+    This contains the rationale and evidence associated with
+    the runtime decision that caused the Executor to be invoked.
+
+    The Executor should use this information to adapt its
+    execution workflow. It must not treat the context as a
+    command to blindly follow.
+    """
+
+    runtime_state = state.get("runtime_state")
+
+    if runtime_state is None:
+        return "No runtime decision context available."
+
+    decision_context = runtime_state.decision_context
+
+    if decision_context is None:
+        return "No runtime decision context available."
+
+    lines = [
+        "Rationale:",
+        decision_context.rationale,
+        "",
+        "Evidence:",
+    ]
+
+    if decision_context.evidence:
+        for evidence in decision_context.evidence:
+            lines.append(
+                f"- {evidence}"
+            )
+    else:
+        lines.append("- None")
+
+    return "\n".join(lines)

@@ -1,3 +1,4 @@
+from agents.terminal.state import TerminalState
 from agents.terminal.task_executor.models import ExecutorOutput
 from agents.terminal.task_executor.context_builder import (
     build_execution_context,
@@ -39,7 +40,7 @@ def _start_current_task(
     )
 
     if existing_task is not None:
-        return
+        return existing_task
 
     # ----------------------------------------------------------
     # Select the next executable task
@@ -63,9 +64,10 @@ def _start_current_task(
         plan=task_plan,
         task_id=current_task.task_id,
     )
+    return current_task
 
 
-def terminal_task_executor_node(state):
+def terminal_task_executor_node(state: TerminalState):
     """
     Generate an execution workflow for the current objective.
 
@@ -112,8 +114,19 @@ def terminal_task_executor_node(state):
     # IN_PROGRESS.
     # ----------------------------------------------------------
 
-    _start_current_task(
+    current_task = _start_current_task(
         state,
+    )
+
+    # ----------------------------------------------------------
+    # The TaskPlan owns the authoritative objective.
+    #
+    # The LLM only designs the tactical workflow. It must not
+    # redefine which TaskItem the workflow belongs to.
+    # ----------------------------------------------------------
+
+    executor_output.workflow.objective = (
+        current_task.objective
     )
 
     runtime_state = state.get(

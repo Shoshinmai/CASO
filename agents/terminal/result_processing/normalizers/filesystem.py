@@ -313,6 +313,14 @@ def normalize_read_file(
 ) -> NormalizedResult:
     """
     Normalize read_file results.
+
+    The normalizer preserves deterministic evidence:
+    - file resource
+    - complete raw read result
+    - execution outcome
+
+    Semantic information from the file contents is extracted
+    later by the Memory Condenser.
     """
 
     if not raw_result.get("success", False):
@@ -336,22 +344,6 @@ def normalize_read_file(
 
     start_line = raw_result["start_line"]
     end_line = raw_result["end_line"]
-    has_more = raw_result.get("has_more", False)
-
-    facts = [
-        Fact(
-            statement=f"Read lines {start_line}-{end_line} from the file.",
-            source=tool_name,
-        )
-    ]
-
-    if has_more:
-        facts.append(
-            Fact(
-                statement="Additional file content is available.",
-                source=tool_name,
-            )
-        )
 
     artifact = ArtifactCandidate(
         artifact_type="file_content",
@@ -367,7 +359,7 @@ def normalize_read_file(
         attempt=attempt,
         success=True,
         progress_made=True,
-        facts=facts,
+        facts=[],
         resources=[resource],
         artifact=artifact,
     )

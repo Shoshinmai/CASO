@@ -6,7 +6,15 @@ DEFAULT_ENCODING = "utf-8"
 
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
-MAX_READ_LINES = 1000
+# ------------------------------------------------------------
+# Read limits
+#
+# These are capability-owned limits.
+# The model must never be able to override them.
+# ------------------------------------------------------------
+
+MAX_READ_LINES = 400
+MAX_READ_CHARS = 60_000
 
 
 def is_binary_file(path: Path) -> bool:
@@ -71,25 +79,23 @@ def safe_read_text(
 def read_lines(
     path: Path,
     start_line: int = 1,
-    max_lines: int = 200,
     encoding: str = DEFAULT_ENCODING,
 ) -> Optional[dict]:
     """
     Read a bounded window of lines from a text file.
 
+    The caller controls only the starting line.
+
+    The capability itself enforces MAX_READ_LINES and
+    MAX_READ_CHARS.
+
     Lines are 1-indexed.
 
-    Reads one additional line beyond the requested window to
-    determine whether more content exists.
-
-    Returns structured pagination metadata and file content,
-    or None if the file cannot be read.
+    The function also determines the total number of lines
+    so that callers can paginate deterministically.
     """
 
     if start_line < 1:
-        return None
-
-    if max_lines < 1:
         return None
 
     if not path.exists():
@@ -98,14 +104,20 @@ def read_lines(
     if not path.is_file():
         return None
 
+    if path.stat().st_size > MAX_FILE_SIZE:
+        return None
+
     if is_binary_file(path):
         return None
 
-    requested_end_line = start_line + max_lines - 1
-
     try:
-        collected_lines = []
-        has_more = False
+        collected_lines: list[str] = []
+
+        total_lines = 0
+        collected_chars = 0
+
+        truncated_by_lines = False
+        truncated_by_chars = False
 
         with path.open(
             "r",
@@ -113,17 +125,43 @@ def read_lines(
             errors="replace",
         ) as file:
 
-            for line_number, line in enumerate(file, start=1):
+            for line_number, line in enumerate(
+                file,
+                start=1,
+            ):
 
+                total_lines = line_number
+
+                # Ignore lines before the requested starting point.
                 if line_number < start_line:
                     continue
 
-                if line_number <= requested_end_line:
-                    collected_lines.append(line)
+                # Once the line limit has been reached, we still
+                # continue through the file so total_lines remains
+                # accurate.
+                if len(collected_lines) >= MAX_READ_LINES:
+                    truncated_by_lines = True
                     continue
 
-                has_more = True
-                break
+                # Protect the observation from very large lines.
+                remaining_chars = (
+                    MAX_READ_CHARS - collected_chars
+                )
+
+                if remaining_chars <= 0:
+                    truncated_by_chars = True
+                    continue
+
+                # Keep complete lines intact whenever possible.
+                if len(line) <= remaining_chars:
+                    collected_lines.append(line)
+                    collected_chars += len(line)
+                    continue
+
+                # The next complete line would exceed the character
+                # budget. Do not split the line because that would
+                # make line-based pagination ambiguous.
+                truncated_by_chars = True
 
         lines_returned = len(collected_lines)
 
@@ -133,23 +171,47 @@ def read_lines(
             else None
         )
 
+        has_more = (
+            actual_end_line is not None
+            and actual_end_line < total_lines
+        )
+
         next_start_line = (
             actual_end_line + 1
-            if has_more and actual_end_line is not None
+            if has_more
             else None
+        )
+
+        if truncated_by_lines:
+            truncation_reason = "line_limit"
+
+        elif truncated_by_chars:
+            truncation_reason = "character_limit"
+
+        else:
+            truncation_reason = None
+
+        remaining_lines = (
+            max(total_lines - actual_end_line, 0)
+            if actual_end_line is not None
+            else max(total_lines - start_line + 1, 0)
         )
 
         return {
             "start_line": start_line,
             "end_line": actual_end_line,
             "lines_returned": lines_returned,
+            "total_lines": total_lines,
+            "remaining_lines": remaining_lines,
             "has_more": has_more,
             "next_start_line": next_start_line,
+            "truncation_reason": truncation_reason,
             "content": "".join(collected_lines),
         }
 
     except (PermissionError, OSError, UnicodeError):
         return None
+
 
 def find_search_backend() -> str:
     """

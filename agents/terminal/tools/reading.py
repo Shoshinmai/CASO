@@ -9,15 +9,14 @@ from agents.terminal.utils.text_helpers import read_lines
 def read_file(
     path: str,
     start_line: int = 1,
-    max_lines: int = 200,
 ) -> dict:
     """
     PURPOSE
     -------
     Read a bounded window of lines from a text file.
 
-    This capability allows the Terminal Agent to inspect file contents
-    without loading the entire file into the model context.
+    The capability controls the maximum amount of content returned.
+    The model controls only the file path and starting line.
 
     TYPICAL USE CASES
     -----------------
@@ -32,7 +31,7 @@ def read_file(
     ------------------------
     - The file path is known.
     - File contents need to be inspected.
-    - A bounded section of a large file needs to be read.
+    - A bounded section of a file needs to be read.
 
     DO NOT USE THIS CAPABILITY WHEN
     -------------------------------
@@ -50,13 +49,20 @@ def read_file(
 
     IMPORTANT
     ---------
-    This capability performs bounded, windowed reading.
+    The amount of content returned is controlled internally by
+    the capability.
 
-    Use start_line to begin reading from a specific line.
+    The model MUST NOT choose a maximum number of lines.
 
-    Use max_lines to control the maximum number of lines returned.
+    For large files, the result contains:
 
-    If has_more is true, use next_start_line to continue reading the file.
+        has_more
+        next_start_line
+        total_lines
+        remaining_lines
+
+    To continue reading, call read_file again with the
+    returned next_start_line.
 
     Returns
     -------
@@ -83,7 +89,6 @@ def read_file(
     result = read_lines(
         path=resolved_path,
         start_line=start_line,
-        max_lines=max_lines,
     )
 
     if result is None:

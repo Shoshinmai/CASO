@@ -215,6 +215,12 @@ class SearchContentInput(BaseModel):
 class ReadFileInput(BaseModel):
     """
     Input schema for reading a bounded window of a text file.
+
+    The model may choose where reading begins, but it does not
+    control how much content the capability returns.
+
+    The read capability enforces its own line and character
+    limits to protect the model context.
     """
 
     path: str = Field(
@@ -227,14 +233,11 @@ class ReadFileInput(BaseModel):
     start_line: int = Field(
         default=1,
         ge=1,
-        description=("First line to read. Lines are 1-indexed."),
-    )
-
-    max_lines: int = Field(
-        default=200,
-        ge=1,
-        le=1000,
-        description=("Maximum number of lines to return."),
+        description=(
+            "First line to read. Lines are 1-indexed. "
+            "Use the next_start_line returned by a previous "
+            "read_file call to continue reading a large file."
+        ),
     )
 
 

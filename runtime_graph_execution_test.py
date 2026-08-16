@@ -57,22 +57,16 @@ def test_terminal_agent_replanning():
 
     initial_state = {
         "goal": (
-            "Investigate and validate the current CASO Terminal Agent runtime. "
-            "First locate the runtime_graph_test.py file in the current "
-            "project. Then inspect the test to identify the runtime graph it invokes "
-            "and the specific Terminal Agent test function being executed. "
-            "Next inspect the runtime graph implementation and identify the graph "
-            "entry point and the major execution stages involved in running the "
-            "Terminal Agent. "
-            "After understanding the execution path, run the identified test. "
-            "If execution succeeds, verify from the output that the graph reached "
-            "its terminal state and report the execution stages observed. "
-            "If execution fails, use the error output to locate and inspect the "
-            "relevant source code and explain the failure. "
-            "Do not modify, delete, or create project files. "
-            "Finally provide a concise investigation report containing the test "
-            "file, runtime graph entry point, execution result, stages observed, "
-            "and any diagnosed issue."
+            "Perform a read-only investigation of the current CASO project. "
+            "First locate the file named runtime_graph_execution_test.py. "
+            "Then, using the exact file path discovered in the previous step, "
+            "read that file and identify the runtime graph module it imports. "
+            "Next, using the exact runtime graph module path discovered from "
+            "the file contents, locate and inspect that source file. "
+            "Finally, use the information discovered in the previous steps "
+            "to report the test file path, the imported runtime graph module, "
+            "the runtime graph source path, and the main graph entry point. "
+            "Do not modify, create, or delete any files."
         ),
     }
 

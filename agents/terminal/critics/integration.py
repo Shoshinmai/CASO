@@ -1,3 +1,5 @@
+from pydantic import BaseModel
+
 from agents.terminal.critics.models import (
     CriticOutput,
 )
@@ -25,7 +27,9 @@ def critic_output_to_runtime_event(
     decision = critic_output.decision
 
     try:
-        return RuntimeEvent(decision.value)
+        return RuntimeEvent(
+            decision.value,
+        )
 
     except ValueError as exc:
         raise ValueError(
@@ -54,22 +58,21 @@ def critic_output_to_runtime_context(
     )
 
 
-class CriticRuntimeEvent:
+class CriticRuntimeEvent(BaseModel):
     """
     Runtime-facing representation of a Critic decision.
 
-    The event identifies what happened.
-    The decision context preserves why it happened.
+    This model intentionally contains only Runtime-owned data.
+
+    The Critic subsystem owns CriticOutput.
+    The Runtime receives:
+        - the normalized RuntimeEvent
+        - the RuntimeDecisionContext
     """
 
-    def __init__(
-        self,
-        *,
-        event: RuntimeEvent,
-        context: RuntimeDecisionContext,
-    ) -> None:
-        self.event = event
-        self.context = context
+    event: RuntimeEvent
+
+    context: RuntimeDecisionContext
 
 
 def build_critic_runtime_event(

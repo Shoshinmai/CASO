@@ -1,7 +1,9 @@
 from agents.terminal.memory import artifact_store
 from agents.terminal.models import PlanningOutput, TaskPlanningOutput
 from agents.terminal.prompts.planner_prompt import TERMINAL_PLANNER_PROMPT
+from agents.terminal.runtime.events import RuntimeEvent
 from agents.terminal.state import TerminalState
+from agents.terminal.task_plan.manager import TaskPlanManager
 from agents.terminal.task_plan.materializer import TaskPlanMaterializer
 from agents.terminal.utils.planner_context_builder import build_planner_context
 from llm.llmclient import call_nvidia, call_ollama
@@ -18,28 +20,74 @@ def terminal_planner_node(state: TerminalState):
 
     prompt = TERMINAL_PLANNER_PROMPT.format(**planner_context)
 
-
     # plan = call_ollama(
     #     prompt=prompt,
-    #     model="qwen2.5-coder:7b",
+    #     model="deepseek-r1:8b",
+    #     # model="qwen2.5-coder:7b",
     #     # model="freehuntx/qwen3-coder:8b ",
     #     subagent=True,
     #     state_model=TaskPlanningOutput,
     # )
     plan = call_nvidia(
         prompt,
-        "nvidia/nemotron-3-ultra-550b-a55b",
+        # "nvidia/nemotron-3-ultra-550b-a55b",
+        "nvidia/nemotron-3-super-120b-a12b",
         subagent=True,
         state_model=TaskPlanningOutput,
     )
-    
-    task_plan = TaskPlanMaterializer.materialize(
-        goal=state.get("task").goal,
-        planning_output=plan,
+
+    runtime_state = state.get("runtime_state")
+
+    is_plan_update = (
+        runtime_state is not None
+        and runtime_state.last_event == RuntimeEvent.PLAN_UPDATE_REQUIRED
     )
     
-    runtime_state = state.get("runtime_state") 
-    if runtime_state is not None: 
+    is_replan = (
+        runtime_state is not None
+        and runtime_state.last_event == RuntimeEvent.REPLAN_REQUIRED
+    )
+
+    # ----------------------------------------------------------
+    # PLAN UPDATE
+    # ----------------------------------------------------------
+
+    if is_plan_update:
+
+        update_current_task_plan(
+            state=state,
+            planning_output=plan,
+        )
+
+        task_plan = state["task_plan"]
+
+    # ----------------------------------------------------------
+    # REPLAN
+    # ----------------------------------------------------------
+
+    elif is_replan:
+
+        replan_current_task_plan(
+            state=state,
+            planning_output=plan,
+        )
+
+        task_plan = state["task_plan"]
+
+    # ----------------------------------------------------------
+    # INITIAL PLAN
+    # ----------------------------------------------------------
+
+    else:
+
+        task_plan = TaskPlanMaterializer.materialize(
+            goal=state.get("task").goal,
+            planning_output=plan,
+        )
+
+        state["task_plan"] = task_plan
+
+    if runtime_state is not None:
         runtime_state.decision_context = None
 
     print("\n========== TASK PLANNER ==========")
@@ -51,32 +99,74 @@ def terminal_planner_node(state: TerminalState):
     }
 
 
-def build_artifact_context(
-    artifact_ids: list[str] | None,
-) -> str:
+def update_current_task_plan(
+    *,
+    state: TerminalState,
+    planning_output: TaskPlanningOutput,
+) -> None:
     """
-    Build compact planner-facing context for available artifacts.
+    Apply a Planner-generated rolling-plan update to the existing
+    TaskPlan.
+
+    The Planner proposes the new task structure.
+    TaskPlanManager owns the mutation.
     """
 
-    if not artifact_ids:
-        return "No artifacts available."
+    task_plan = state.get("task_plan")
 
-    catalog = artifact_store.get_catalog(artifact_ids=artifact_ids)
+    if task_plan is None:
+        raise ValueError("Cannot update TaskPlan because no existing TaskPlan exists.")
 
-    if not catalog:
-        return "No artifacts available."
+    proposed_plan = TaskPlanMaterializer.materialize(
+        goal=task_plan.goal,
+        planning_output=planning_output,
+    )
 
-    sections = []
+    TaskPlanManager.update_remaining_tasks(
+        plan=task_plan,
+        tasks=proposed_plan.tasks,
+    )
 
-    for artifact in catalog:
-        sections.append(
-            "\n".join(
-                [
-                    f"Artifact ID: {artifact['artifact_id']}",
-                    f"Type: {artifact['artifact_type']}",
-                    f"Summary: {artifact['summary']}",
-                ]
-            )
-        )
+    task_plan.metadata = proposed_plan.metadata
 
-    return "\n\n".join(sections)
+    TaskPlanManager.update_task_readiness(
+        plan=task_plan,
+    )
+
+
+def replan_current_task_plan(
+    *,
+    state: TerminalState,
+    planning_output: TaskPlanningOutput,
+) -> None:
+    """
+    Replace the remaining portion of the current TaskPlan with
+    a newly generated planning strategy.
+
+    Completed tasks are preserved so execution history remains
+    part of the current TaskPlan.
+
+    The Planner proposes the new structure.
+    TaskPlanManager owns the mutation.
+    """
+
+    task_plan = state.get("task_plan")
+
+    if task_plan is None:
+        raise ValueError("Cannot replan because no existing TaskPlan exists.")
+
+    proposed_plan = TaskPlanMaterializer.materialize(
+        goal=task_plan.goal,
+        planning_output=planning_output,
+    )
+
+    TaskPlanManager.replace_remaining_tasks(
+        plan=task_plan,
+        tasks=proposed_plan.tasks,
+    )
+
+    task_plan.metadata = proposed_plan.metadata
+
+    TaskPlanManager.update_task_readiness(
+        plan=task_plan,
+    )

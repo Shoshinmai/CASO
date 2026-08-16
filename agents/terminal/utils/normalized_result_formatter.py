@@ -89,6 +89,21 @@ def format_normalized_result(
     # --------------------------------------------------
 
     lines.append(f"Tool: {normalized.context.tool_name}")
+    
+    if normalized.context.tool_name == "run_terminal":
+
+        execution = normalized.execution
+
+        lines.append("")
+        lines.append("Execution:")
+
+        lines.append(
+            f"- Success: {execution.success}"
+        )
+
+        lines.append(
+            f"- Return code: {execution.return_code}"
+        )
 
     # --------------------------------------------------
     # Facts
@@ -160,15 +175,30 @@ def format_normalized_result(
                 artifact.data,
                 dict,
             ):
+                content = _extract_inline_content(
+                    tool_name=normalized.context.tool_name,
+                    artifact_data=artifact.data,
+                )
 
                 _append_content_section(
                     lines=lines,
                     title="Content",
-                    content=artifact.data.get(
-                        "content",
-                        "",
-                    ),
+                    content=content,
                 )
+
+            if normalized.context.tool_name == "run_terminal":
+                if isinstance(artifact.data, dict):
+                    error = str(
+                        artifact.data.get(
+                            "error",
+                            "",
+                        )
+                    )
+
+                    _append_terminal_error(
+                        lines=lines,
+                        error=error,
+                    )
 
         # Large observations still rely on artifacts.
 
@@ -185,3 +215,59 @@ def format_normalized_result(
         lines.append("Not Stored")
 
     return "\n".join(lines)
+
+
+def _extract_inline_content(
+    *,
+    tool_name: str,
+    artifact_data: object,
+) -> str:
+    """
+    Extract human-readable inline content from a normalized
+    artifact.
+
+    The artifact schema remains tool-faithful while this helper
+    provides a common presentation layer.
+    """
+
+    if not isinstance(
+        artifact_data,
+        dict,
+    ):
+        return ""
+
+    if tool_name in {
+        "read_file",
+        "read_artifact",
+    }:
+        return str(
+            artifact_data.get(
+                "content",
+                "",
+            )
+        )
+
+    if tool_name == "run_terminal":
+        return str(
+            artifact_data.get(
+                "output",
+                "",
+            )
+        )
+
+    return ""
+
+
+def _append_terminal_error(
+    *,
+    lines: list[str],
+    error: str,
+) -> None:
+    if not error:
+        return
+
+    _append_content_section(
+        lines=lines,
+        title="Error",
+        content=error,
+    )

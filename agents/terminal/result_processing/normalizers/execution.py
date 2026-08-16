@@ -42,31 +42,54 @@ def normalize_run_terminal(
     raw_result: dict,
     attempt: int = 1,
 ) -> NormalizedResult:
-    """
-    Normalize run_terminal results.
-    """
 
-    success = raw_result.get("success", False)
+    success = bool(
+        raw_result.get(
+            "success",
+            False,
+        )
+    )
 
-    facts = [
-        Fact(
-            statement=(
-                "Terminal command executed successfully."
-                if success
-                else "Terminal command execution failed."
-            ),
-            source=tool_name,
+    return_code = raw_result.get(
+        "return_code",
+    )
+
+    output = str(
+        raw_result.get(
+            "output",
+            "",
+        )
+        or ""
+    )
+
+    error = str(
+        raw_result.get(
+            "error",
+            "",
+        )
+        or ""
+    )
+
+    # ----------------------------------------------------------
+    # Semantic execution outcome
+    # ----------------------------------------------------------
+
+    execution = ExecutionOutcome(
+        success=success,
+        progress_made=success,
+        message=(
+            "Terminal command completed successfully."
+            if success
+            else "Terminal command failed."
         ),
-        Fact(
-            statement=(
-                f"Exit code: {raw_result.get('return_code', -1)}."
-            ),
-            source=tool_name,
-        ),
-    ]
+        return_code=return_code,
+        stdout=output,
+        stderr=error,
+    )
 
-    output = raw_result.get("output", "")
-    error = raw_result.get("error", "")
+    # ----------------------------------------------------------
+    # Preserve complete terminal evidence as an artifact.
+    # ----------------------------------------------------------
 
     artifact = ArtifactCandidate(
         artifact_type="terminal_output",
@@ -78,15 +101,17 @@ def normalize_run_terminal(
         data={
             "output": output,
             "error": error,
-            "return_code": raw_result.get("return_code"),
+            "return_code": return_code,
         },
     )
 
-    return _build_normalized_result(
-        tool_name=tool_name,
-        attempt=attempt,
-        success=success,
-        progress_made=success,
-        facts=facts,
+    return NormalizedResult(
+        context=ToolExecutionContext(
+            tool_name=tool_name,
+            attempt=attempt,
+        ),
+        resources=[],
+        facts=[],
+        execution=execution,
         artifact=artifact,
     )

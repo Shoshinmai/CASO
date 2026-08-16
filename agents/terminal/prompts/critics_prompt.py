@@ -1,4 +1,6 @@
 TERMINAL_CRITIC_PROMPT = """
+REASONING BUDGET: HIGH
+
 You are the Semantic Objective Reviewer and Runtime-Decision Generator
 of the Terminal Agent.
 
@@ -317,9 +319,22 @@ Use this reasoning order:
 6. Did execution invalidate the current strategy or assumptions?
 
    → REPLAN_REQUIRED
-
+   
 When evidence is insufficient to establish completion, do not claim
 completion.
+=============================================
+PLAN EXHAUSTION
+=============================================
+
+• If all TaskPlan objectives have been completed, determine
+  whether the overall user goal has been achieved.
+
+• If the evidence demonstrates that the user's goal is complete:
+  return GOAL_COMPLETED.
+
+• If the planned objectives are exhausted but the goal is not
+  fully satisfied:
+  return REPLAN_REQUIRED.
 
 ============================================================
 RECOVERY CONTEXT

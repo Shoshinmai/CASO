@@ -1,13 +1,15 @@
 from __future__ import annotations
+
 from datetime import datetime, timezone
 
 from agents.terminal.models import (
     AttemptStatus,
     ExecutionAttempt,
     ExecutionMemory,
-    utc_now,
 )
-from agents.terminal.result_processing.models import RuntimeProcessingResult
+from agents.terminal.result_processing.models import (
+    RuntimeProcessingResult,
+)
 
 
 class ExecutionMemoryManager:
@@ -25,12 +27,9 @@ class ExecutionMemoryManager:
         capability: str,
         strategy: str,
         arguments: dict,
-    ) -> str:
+    ) -> ExecutionAttempt:
         """
         Create a new execution attempt.
-
-        Returns:
-            attempt_id
         """
 
         attempt = ExecutionAttempt(
@@ -41,7 +40,9 @@ class ExecutionMemoryManager:
             status=AttemptStatus.RUNNING,
         )
 
-        execution_memory.attempts.append(attempt)
+        execution_memory.attempts.append(
+            attempt
+        )
 
         return attempt
 
@@ -65,14 +66,16 @@ class ExecutionMemoryManager:
         attempt_id: str,
     ) -> ExecutionAttempt:
         """
-        Locate an execution attempt by its identifier.
+        Locate an execution attempt by identifier.
         """
 
         for attempt in execution_memory.attempts:
             if attempt.attempt_id == attempt_id:
                 return attempt
 
-        raise ValueError(f"Execution attempt '{attempt_id}' not found.")
+        raise ValueError(
+            f"Execution attempt '{attempt_id}' not found."
+        )
 
     @staticmethod
     def finish_attempt(
@@ -84,33 +87,53 @@ class ExecutionMemoryManager:
         error: str | None = None,
     ) -> None:
         """
-        Complete an execution attempt using the processed runtime result.
+        Finalize one RUNNING execution attempt.
         """
 
-        print("[FINISH ATTEMPT]")
-        print("Attempt ID:", attempt_id)
-        
         attempt = ExecutionMemoryManager._find_attempt(
             execution_memory=execution_memory,
             attempt_id=attempt_id,
         )
-        print("Before:", attempt.status)
 
-        attempt.status = AttemptStatus.SUCCEEDED if success else AttemptStatus.FAILED
+        # ------------------------------------------------------
+        # Execution lifecycle invariant
+        # ------------------------------------------------------
 
-        attempt.completed_at = datetime.now(timezone.utc)
+        if attempt.status != AttemptStatus.RUNNING:
+            raise ValueError(
+                f"Execution attempt '{attempt_id}' "
+                f"cannot be finished because its current "
+                f"status is '{attempt.status.value}'."
+            )
 
-        attempt.outcome = runtime_result.normalized_result.execution
-
-        attempt.progress_made = (
-            runtime_result.memory_update.completed_work
-            or runtime_result.memory_update.known_facts
-            or runtime_result.memory_update.discovered_resources
+        execution = (
+            runtime_result
+            .normalized_result
+            .execution
         )
 
-        attempt.error = error
-        print("After:", attempt.status)
-    
+        attempt.status = (
+            AttemptStatus.SUCCEEDED
+            if success
+            else AttemptStatus.FAILED
+        )
+
+        attempt.completed_at = datetime.now(
+            timezone.utc
+        )
+
+        attempt.outcome = execution
+
+        attempt.progress_made = bool(
+            execution.progress_made
+        )
+
+        attempt.error = (
+            error
+            if error is not None
+            else execution.stderr or None
+        )
+
     @staticmethod
     def add_artifact(
         *,
@@ -120,11 +143,6 @@ class ExecutionMemoryManager:
     ) -> None:
         """
         Associate an artifact with an execution attempt.
-
-        Args:
-            execution_memory: Execution memory to update.
-            attempt_id: Identifier of the execution attempt.
-            artifact_id: Identifier of the artifact created during the attempt.
         """
 
         attempt = ExecutionMemoryManager._find_attempt(
@@ -133,4 +151,6 @@ class ExecutionMemoryManager:
         )
 
         if artifact_id not in attempt.artifact_ids:
-            attempt.artifact_ids.append(artifact_id)
+            attempt.artifact_ids.append(
+                artifact_id
+            )

@@ -14,21 +14,6 @@ def compile_execution_step(
     step: ExecutionStep,
     tools: list[BaseTool] | None = None,
 ) -> AIMessage:
-    """
-    Compile one ExecutionStep into a native LangChain tool call.
-
-    This function is deterministic.
-
-    It does not:
-    - select a capability
-    - modify the execution strategy
-    - call an LLM
-    - execute the capability
-    - retry failures
-
-    It only validates the selected capability and its arguments,
-    then constructs the AIMessage expected by ToolNode.
-    """
 
     available_tools = tools if tools is not None else TOOLS
 
@@ -44,6 +29,22 @@ def compile_execution_step(
             f"Unknown capability '{step.capability}'. "
             f"Available capabilities: "
             f"{', '.join(sorted(tool_map))}"
+        )
+
+    unresolved_references = _find_unresolved_references(
+        step.arguments,
+    )
+
+    if unresolved_references:
+
+        raise ValueError(
+            "ExecutionStep contains unresolved workflow "
+            "references. ExecutionWorkflow does not support "
+            "runtime output interpolation.\n"
+            + "\n".join(
+                f"- {reference}"
+                for reference in unresolved_references
+            )
         )
 
     arguments = _validate_arguments(
@@ -63,6 +64,62 @@ def compile_execution_step(
         ],
     )
 
+def _find_unresolved_references(
+    value: Any,
+    *,
+    path: str = "arguments",
+) -> list[str]:
+    """
+    Find unresolved workflow-output references inside tool arguments.
+
+    ExecutionWorkflow currently does not support runtime output
+    interpolation.
+
+    The only syntax treated as a workflow reference is the explicit
+    '${...}' form.
+
+    Ordinary shell syntax such as PowerShell:
+        ForEach-Object { ... }
+
+    must remain valid.
+    """
+
+    references: list[str] = []
+
+    if isinstance(value, str):
+
+        if "${" in value:
+            references.append(
+                f"{path}: {value}"
+            )
+
+        return references
+
+    if isinstance(value, dict):
+
+        for key, nested_value in value.items():
+            references.extend(
+                _find_unresolved_references(
+                    nested_value,
+                    path=f"{path}.{key}",
+                )
+            )
+
+        return references
+
+    if isinstance(value, list):
+
+        for index, nested_value in enumerate(value):
+            references.extend(
+                _find_unresolved_references(
+                    nested_value,
+                    path=f"{path}[{index}]",
+                )
+            )
+
+        return references
+
+    return references
 
 def _validate_arguments(
     *,

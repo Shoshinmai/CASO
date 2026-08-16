@@ -8,6 +8,7 @@ from agents.terminal.models import (
     TaskContext,
     ThreadMemory,
 )
+from agents.terminal.runtime.models import RuntimeState
 from agents.terminal.state import TerminalState
 
 
@@ -29,16 +30,12 @@ def task_initializer_node(
     thread_id = config.get("configurable", {}).get("thread_id")
 
     if not thread_id:
-        raise ValueError(
-            "Terminal Agent requires a LangGraph thread_id."
-        )
+        raise ValueError("Terminal Agent requires a LangGraph thread_id.")
 
     existing_thread_memory = state.get("thread_memory")
 
     thread_memory = (
-        existing_thread_memory
-        if existing_thread_memory is not None
-        else ThreadMemory()
+        existing_thread_memory if existing_thread_memory is not None else ThreadMemory()
     )
 
     task = TaskContext(
@@ -54,9 +51,10 @@ def task_initializer_node(
         "thread_memory": thread_memory,
         "task_plan": None,
         "execution_workflow": None,
+        "critic_runtime_event": None,
+        "runtime_state": RuntimeState(),
         "persistent_memory": PersistentMemory(),
         "ephemeral_execution_state": EphemeralExecutionState(),
-
         # Transitional legacy reset
         "action_type": "",
         "thought": "",

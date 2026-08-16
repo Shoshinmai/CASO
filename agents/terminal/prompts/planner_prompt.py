@@ -1,6 +1,4 @@
 TERMINAL_PLANNER_PROMPT = """
-Reasoning Budget: HIGH.
-
 ==================================================
 ROLE
 ==================================================
@@ -236,6 +234,20 @@ The planner will be invoked again when additional planning becomes
 necessary.
 
 Short adaptive plans are preferred over long speculative plans.
+
+When PLAN_UPDATE_REQUIRED is provided:
+
+The existing Task Plan contains completed and possibly currently
+executing objectives that are preserved by the runtime.
+
+Your output should describe the updated planning horizon.
+
+Do not recreate completed objectives.
+
+Do not recreate the currently executing objective.
+
+Only produce objectives that should remain or be added after the
+preserved work.
 
 ==================================================
 TASK GRAPH

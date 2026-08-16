@@ -2,6 +2,7 @@ from typing import Any
 
 from agents.terminal.critics.models import CriticContext
 
+from agents.terminal.runtime.events import RuntimeEvent
 from agents.terminal.state import TerminalState
 from agents.terminal.task_plan.manager import (
     TaskPlanManager,
@@ -42,38 +43,65 @@ def build_critic_context(
     task_plan = state.get("task_plan")
 
     if task_plan is None:
-        raise ValueError(
-            "Cannot build CriticContext without a TaskPlan."
-        )
+        raise ValueError("Cannot build CriticContext without a TaskPlan.")
 
-    current_task = TaskPlanManager.get_current_task(
-        task_plan=task_plan,
+    runtime_state = state.get(
+        "runtime_state",
     )
+
+    current_task = TaskPlanManager.get_in_progress_task(
+        plan=task_plan,
+    )
+    # ----------------------------------------------------------
+    # Plan exhaustion review
+    # ----------------------------------------------------------
+
+    if (
+        runtime_state is not None
+        and runtime_state.last_event == RuntimeEvent.PLAN_EXHAUSTED
+    ):
+
+        return CriticContext(
+            overall_goal=task_plan.goal,
+            current_objective=(
+                "All planned objectives have been completed. "
+                "Determine whether the overall user goal has "
+                "actually been achieved."
+            ),
+            remaining_objectives=("No remaining objectives."),
+            execution_summary=_build_execution_summary(
+                state,
+            ),
+            active_memory=format_active_memory(
+                active_memory=state["active_memory"],
+            ),
+            artifact_catalog=format_artifact_catalog(
+                state.get(
+                    "artifact_references",
+                    [],
+                )
+            ),
+        )
 
     if current_task is None:
         raise ValueError(
             "Cannot build CriticContext because the TaskPlan "
-            "has no current executable task."
+            "has no IN_PROGRESS task."
         )
 
     return CriticContext(
         overall_goal=task_plan.goal,
-
         current_objective=current_task.objective,
-
         remaining_objectives=_build_remaining_objectives(
             task_plan=task_plan,
             current_task_id=current_task.task_id,
         ),
-
         execution_summary=_build_execution_summary(
             state,
         ),
-
         active_memory=format_active_memory(
             active_memory=state["active_memory"],
         ),
-
         artifact_catalog=format_artifact_catalog(
             state.get("artifact_references", []),
         ),
@@ -99,7 +127,8 @@ def _build_remaining_objectives(
         for task in task_plan.tasks
         if (
             task.task_id != current_task_id
-            and task.status.value not in {
+            and task.status.value
+            not in {
                 "completed",
                 "cancelled",
             }
@@ -115,9 +144,7 @@ def _build_remaining_objectives(
         remaining_tasks,
         start=1,
     ):
-        lines.append(
-            f"{index}. {task.objective}"
-        )
+        lines.append(f"{index}. {task.objective}")
 
     return "\n".join(lines)
 
@@ -160,18 +187,8 @@ def _build_execution_summary(
             workflow.steps,
             start=1,
         ):
-            workflow_lines.append(
-                f"{index}. {step.description}"
-            )
-            workflow_lines.append(
-                f"   Capability: {step.capability}"
-            )
-            workflow_lines.append(
-                f"   Status: {step.status.value}"
-            )
+            workflow_lines.append(f"{index}. {step.description}")
+            workflow_lines.append(f"   Capability: {step.capability}")
+            workflow_lines.append(f"   Status: {step.status.value}")
 
-    return (
-        summary
-        + "\n"
-        + "\n".join(workflow_lines)
-    )
+    return summary + "\n" + "\n".join(workflow_lines)

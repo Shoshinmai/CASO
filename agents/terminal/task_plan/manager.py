@@ -146,7 +146,10 @@ class TaskPlanManager:
         task_id: str,
     ) -> None:
         """
-        Mark a task as in progress.
+        Start a task that is READY for execution.
+
+        Task lifecycle ownership remains inside TaskPlanManager.
+        Only READY tasks may become IN_PROGRESS.
         """
 
         task = TaskPlanManager._find_task(
@@ -154,7 +157,49 @@ class TaskPlanManager:
             task_id=task_id,
         )
 
+        if task.status != TaskItemStatus.READY:
+            raise ValueError(
+                f"Task '{task_id}' cannot be started because its "
+                f"current status is '{task.status}'. "
+                "Only READY tasks may become IN_PROGRESS."
+            )
+
         task.status = TaskItemStatus.IN_PROGRESS
+        
+    @staticmethod
+    def retry_task(
+        *,
+        plan: TaskPlan,
+        task_id: str,
+    ) -> None:
+        """
+        Reset an IN_PROGRESS task so that it can be executed again.
+
+        RETRY_TASK means the objective remains valid, but the previous
+        execution workflow is no longer reusable.
+
+        Lifecycle:
+
+            IN_PROGRESS
+                ↓
+            READY
+                ↓
+            new ExecutionWorkflow
+        """
+
+        task = TaskPlanManager._find_task(
+            plan=plan,
+            task_id=task_id,
+        )
+
+        if task.status != TaskItemStatus.IN_PROGRESS:
+            raise ValueError(
+                f"Task '{task_id}' cannot be retried because its "
+                f"current status is '{task.status}'. "
+                "Only IN_PROGRESS tasks may be retried."
+            )
+
+        task.status = TaskItemStatus.READY
 
     @staticmethod
     def complete_task(
@@ -163,13 +208,22 @@ class TaskPlanManager:
         task_id: str,
     ) -> None:
         """
-        Mark a task as completed.
+        Complete the currently executing task.
+
+        Only an IN_PROGRESS task may become COMPLETED.
         """
 
         task = TaskPlanManager._find_task(
             plan=plan,
             task_id=task_id,
         )
+
+        if task.status != TaskItemStatus.IN_PROGRESS:
+            raise ValueError(
+                f"Task '{task_id}' cannot be completed because its "
+                f"current status is '{task.status}'. "
+                "Only IN_PROGRESS tasks may become COMPLETED."
+            )
 
         task.status = TaskItemStatus.COMPLETED
 
@@ -251,7 +305,10 @@ class TaskPlanManager:
         """
         for task in task_plan.tasks:
 
-            if task.status != TaskItemStatus.PENDING:
+            if task.status not in (
+                TaskItemStatus.PENDING,
+                TaskItemStatus.READY,
+            ):
                 continue
 
             if TaskPlanManager._dependencies_completed(
@@ -329,6 +386,171 @@ class TaskPlanManager:
         ]
 
         plan.tasks = completed_tasks + list(tasks)
+        
+    @staticmethod
+    def update_remaining_tasks(
+        *,
+        plan: TaskPlan,
+        tasks: list[TaskItem],
+    ) -> None:
+        """
+        Replace the unfinished portion of the rolling TaskPlan.
+
+        Completed tasks are immutable execution history and are preserved.
+
+        All unfinished tasks from the previous plan are discarded. This
+        includes the previous IN_PROGRESS task because PLAN_UPDATE_REQUIRED
+        means the previous unfinished execution strategy must be reconsidered.
+
+        Planner-generated tasks are treated only as proposed future work.
+        They are therefore normalized to PENDING before dependency readiness
+        is evaluated.
+
+        The TaskPlanManager, not the Planner, owns task lifecycle state.
+        """
+
+        # --------------------------------------------------------------
+        # Preserve immutable execution history.
+        # --------------------------------------------------------------
+
+        completed_tasks = [
+            task
+            for task in plan.tasks
+            if task.status == TaskItemStatus.COMPLETED
+        ]
+
+        # --------------------------------------------------------------
+        # Planner output represents proposed future work.
+        #
+        # The Planner must never be allowed to directly establish
+        # IN_PROGRESS state.
+        # --------------------------------------------------------------
+
+        replacement_tasks: list[TaskItem] = []
+
+        for task in tasks:
+
+            if task.status == TaskItemStatus.COMPLETED:
+                raise ValueError(
+                    "Planner-generated replacement tasks cannot be "
+                    "marked COMPLETED."
+                )
+
+            task.status = TaskItemStatus.PENDING
+
+            replacement_tasks.append(task)
+
+        # --------------------------------------------------------------
+        # Replace the unfinished portion.
+        # --------------------------------------------------------------
+
+        plan.tasks = completed_tasks + replacement_tasks
+
+        # --------------------------------------------------------------
+        # Resolve which replacement tasks are immediately executable.
+        # --------------------------------------------------------------
+
+        TaskPlanManager.update_task_readiness(
+            plan=plan,
+        )
+        
+    @staticmethod
+    def get_in_progress_task(
+        *,
+        plan: TaskPlan,
+    ) -> TaskItem | None:
+        """
+        Return the task currently being executed.
+
+        Returns None if no task is currently in progress.
+        """
+
+        for task in plan.tasks:
+            if task.status == TaskItemStatus.IN_PROGRESS:
+                return task
+
+        return None
+    
+    @staticmethod
+    def is_plan_complete(
+        *,
+        plan: TaskPlan,
+    ) -> bool:
+        """
+        Return True when every task in the TaskPlan is completed.
+
+        This method only evaluates deterministic TaskPlan state.
+        It does not make any semantic judgement about whether the
+        user's overall goal has been achieved.
+        """
+
+        if not plan.tasks:
+            return False
+
+        return all(
+            task.status == TaskItemStatus.COMPLETED
+            for task in plan.tasks
+        )
+        
+    @staticmethod
+    def has_remaining_tasks(
+        *,
+        plan: TaskPlan,
+    ) -> bool:
+        """
+        Return True when the plan contains tasks that are not yet
+        completed.
+
+        This is a deterministic TaskPlan query.
+        """
+
+        return any(
+            task.status != TaskItemStatus.COMPLETED
+            for task in plan.tasks
+        )
+        
+    @staticmethod
+    def get_blocked_tasks(
+        *,
+        plan: TaskPlan,
+    ) -> list[TaskItem]:
+        """
+        Return tasks that cannot currently execute because at least
+        one dependency has reached a terminal non-success state.
+
+        This method only observes TaskPlan state. It does not mutate
+        tasks or decide how the blockage should be resolved.
+        """
+
+        terminal_blocking_statuses = {
+            TaskItemStatus.BLOCKED,
+            TaskItemStatus.FAILED,
+            TaskItemStatus.CANCELLED,
+        }
+
+        status_by_id = {
+            task.task_id: task.status
+            for task in plan.tasks
+        }
+
+        blocked_tasks: list[TaskItem] = []
+
+        for task in plan.tasks:
+
+            if task.status not in (
+                TaskItemStatus.PENDING,
+                TaskItemStatus.READY,
+            ):
+                continue
+
+            if any(
+                status_by_id.get(dependency)
+                in terminal_blocking_statuses
+                for dependency in task.dependencies
+            ):
+                blocked_tasks.append(task)
+
+        return blocked_tasks
 
     # ------------------------------------------------------------------
     # Internal Helpers
@@ -383,7 +605,4 @@ class TaskPlanManager:
             plan,
         )
 
-        return all(
-            dependency in completed_tasks
-            for dependency in task.dependencies
-        )
+        return all(dependency in completed_tasks for dependency in task.dependencies)

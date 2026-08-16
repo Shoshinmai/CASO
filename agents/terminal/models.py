@@ -723,3 +723,14 @@ class TerminalTaskInput(BaseModel):
         min_length=1,
         description=("Goal the Terminal Agent should accomplish."),
     )
+
+
+# FAKE MODEL
+
+class FAKE_MODEL(BaseModel):
+    """
+    Single planning decision produced by the planner.
+    """
+
+    answer: str = Field(description="response from the model.")
+    

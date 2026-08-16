@@ -8,6 +8,7 @@ from agents.terminal.models import (
     ArtifactReference,
     ExecutionMemory,
 )
+from agents.terminal.state import TerminalState
 from agents.terminal.task_executor.models import ExecutionContext
 from agents.terminal.task_plan.manager import TaskPlanManager
 from agents.terminal.task_plan.models import (
@@ -15,6 +16,7 @@ from agents.terminal.task_plan.models import (
     TaskItemStatus,
     TaskPlan,
 )
+from agents.terminal.utils.capability_selector import get_candidate_tools
 from agents.terminal.utils.memory_formatter import (
     format_active_memory,
     format_artifact_catalog,
@@ -31,8 +33,17 @@ def build_execution_context(
     """
     Build the structured context consumed by the Task Executor.
 
-    The Executor receives only the current executable task,
-    not the complete TaskPlan.
+    The Executor receives only the task it currently owns.
+
+    Task ownership is resolved in this order:
+
+    1. IN_PROGRESS task
+       The Executor is continuing or regenerating a workflow
+       for the task that is already being executed.
+
+    2. Next executable task
+       No task is currently active, so the Executor selects the
+       next READY/PENDING task that can be started.
 
     Runtime decision context is included when the Executor is
     being invoked because of a previous runtime/Critic decision.
@@ -45,14 +56,42 @@ def build_execution_context(
             "Cannot build execution context without a TaskPlan."
         )
 
-    current_task = TaskPlanManager.get_current_task(
-        task_plan,
+    # ----------------------------------------------------------
+    # 1. Existing active task
+    #
+    # CONTINUE_TASK may intentionally return to the Executor
+    # while the current TaskItem remains IN_PROGRESS.
+    #
+    # In that case we MUST generate the new workflow for the
+    # existing task rather than looking for another executable
+    # task.
+    # ----------------------------------------------------------
+
+    current_task = TaskPlanManager.get_in_progress_task(
+        plan=task_plan,
     )
+
+    # ----------------------------------------------------------
+    # 2. No active task
+    #
+    # This is the normal path for a newly created task or a
+    # RETRY_TASK that reset the previous task back to READY.
+    # ----------------------------------------------------------
+
+    if current_task is None:
+
+        current_task = TaskPlanManager.get_current_task(
+            task_plan,
+        )
+
+    # ----------------------------------------------------------
+    # 3. No task available
+    # ----------------------------------------------------------
 
     if current_task is None:
         raise ValueError(
             "Cannot build execution context because the TaskPlan "
-            "has no executable task."
+            "has no executable or IN_PROGRESS task."
         )
 
     return ExecutionContext(
@@ -62,6 +101,9 @@ def build_execution_context(
             task=current_task,
         ),
         objective=current_task.objective,
+        decision_context=_build_decision_context(
+            state,
+        ),
         active_memory=_build_active_memory(
             state["active_memory"],
         ),
@@ -72,9 +114,6 @@ def build_execution_context(
             state["artifact_references"],
         ),
         capabilities=_build_capabilities(
-            state["capabilities"],
-        ),
-        decision_context=_build_decision_context(
             state,
         ),
     )
@@ -119,6 +158,7 @@ def _build_task_metadata(
         ensure_ascii=False,
     )
 
+
 def _build_active_memory(
     active_memory: ActiveTaskMemory,
 ) -> str:
@@ -144,15 +184,19 @@ def _build_artifact_catalog(
 
 
 def _build_capabilities(
-    capabilities: list,
+    state: dict[str, Any],
 ) -> str:
+    candidate_tools = get_candidate_tools(
+        state,
+    )
+
     return build_capability_prompt(
-        capabilities,
+        candidate_tools,
     )
 
 
 def _build_decision_context(
-    state: dict[str, Any],
+    state: dict[str, Any] | TerminalState,
 ) -> str:
     """
     Build the Executor-facing runtime decision context.

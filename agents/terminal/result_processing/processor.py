@@ -27,7 +27,11 @@ def process_tool_result(
     """
     Process a raw tool result through the Runtime Processing Pipeline.
 
-    Mutates TerminalState in-place.
+    This function is responsible for normalization, artifact
+    policy evaluation, observation formatting, and memory proposal
+    generation.
+
+    It does not mutate TerminalState.
     """
 
     normalized = normalize_result(
@@ -36,16 +40,15 @@ def process_tool_result(
         attempt=attempt,
     )
 
-
     _artifact_decision = evaluate_artifact_candidate(
         normalized,
     )
-    
+
     formatted_observation = format_normalized_result(
-    goal=state["goal"],
-    normalized=normalized,
-    artifact_decision=_artifact_decision,
-)
+        goal=state["goal"],
+        normalized=normalized,
+        artifact_decision=_artifact_decision,
+    )
 
     proposal = condense_memory(
         goal=state["goal"],
@@ -53,9 +56,9 @@ def process_tool_result(
         formatted_observation=formatted_observation,
         tool_name=normalized.context.tool_name,
     )
-    
+
     return RuntimeProcessingResult(
-    normalized_result=normalized,
-    artifact_decision=_artifact_decision,
-    memory_update=proposal,
-)
+        normalized_result=normalized,
+        artifact_decision=_artifact_decision,
+        memory_update=proposal,
+    )

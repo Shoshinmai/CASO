@@ -16,6 +16,7 @@ class WorkflowStatus(StrEnum):
     FAILED = "failed"
     CANCELLED = "cancelled"
 
+
 class ExecutionStepStatus(StrEnum):
     """
     Lifecycle state of an individual execution step.
@@ -26,6 +27,7 @@ class ExecutionStepStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     SKIPPED = "skipped"
+
 
 class ExecutionStep(BaseModel):
     """
@@ -61,7 +63,8 @@ class ExecutionStep(BaseModel):
         default_factory=dict,
         description="Execution metadata associated with this step.",
     )
-    
+
+
 class ExecutionWorkflow(BaseModel):
     """
     Tactical execution workflow for one TaskItem.
@@ -99,7 +102,8 @@ class ExecutionWorkflow(BaseModel):
         default_factory=dict,
         description="Runtime metadata associated with the workflow.",
     )
-    
+
+
 class ExecutorOutput(BaseModel):
     """
     Structured tactical planning output produced by the
@@ -112,7 +116,8 @@ class ExecutorOutput(BaseModel):
     )
 
     workflow: ExecutionWorkflow
-    
+
+
 class ExecutionContext(BaseModel):
     """
     Structured execution context consumed by the Task Executor.
@@ -159,4 +164,16 @@ class ExecutionContext(BaseModel):
     capabilities: str
     """
     Available capabilities exposed by the Tool Compiler.
+    """
+
+    decision_context: str
+    """
+    Runtime decision context associated with the current
+    execution invocation.
+
+    Contains rationale and evidence when the Executor was
+    invoked because of a Runtime/Critic decision.
+
+    If no decision context exists, this contains an explicit
+    "No runtime decision context available." message.
     """

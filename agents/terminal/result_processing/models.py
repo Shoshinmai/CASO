@@ -61,14 +61,23 @@ class Signal(BaseModel):
     
 class ExecutionOutcome(BaseModel):
     """
-    Outcome of one tool execution.
+    Semantic outcome of one capability execution.
+
+    This contains execution-level evidence that downstream
+    runtime components may rely on.
     """
 
     success: bool
 
+    progress_made: bool
+
     message: str | None = None
 
-    progress_made: bool
+    return_code: int | None = None
+
+    stdout: str = ""
+
+    stderr: str = ""
     
 class ArtifactCandidate(BaseModel):
     """

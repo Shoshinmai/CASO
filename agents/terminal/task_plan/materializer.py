@@ -4,6 +4,7 @@ from agents.terminal.models import (
     PlannerTask,
     TaskPlanningOutput,
 )
+from agents.terminal.task_plan.manager import TaskPlanManager
 from agents.terminal.task_plan.models import (
     TaskItem,
     TaskPlan,
@@ -58,7 +59,7 @@ class TaskPlanMaterializer:
         # Create TaskPlan
         # ----------------------------------------------------------
 
-        return TaskPlan(
+        task_plan = TaskPlan(
             plan_id=str(uuid4()),
             goal=goal,
             tasks=runtime_tasks,
@@ -66,6 +67,16 @@ class TaskPlanMaterializer:
                 "strategy": planning_output.strategy,
             },
         )
+
+        # ----------------------------------------------------------
+        # Resolve initial task readiness.
+        # ----------------------------------------------------------
+
+        TaskPlanManager.update_task_readiness(
+            plan=task_plan,
+        )
+
+        return task_plan
 
     # --------------------------------------------------------------
     # Internal Helpers

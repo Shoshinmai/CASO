@@ -1,28 +1,96 @@
+from __future__ import annotations
+
 import subprocess
+from typing import Any
 
 
-def run_command(command: str):
+DEFAULT_TIMEOUT_SECONDS = 15
+
+
+def run_command(
+    command: str,
+    *,
+    timeout: int = DEFAULT_TIMEOUT_SECONDS,
+) -> dict[str, Any]:
+    """
+    Execute one Windows shell command.
+
+    This layer is responsible only for process execution and
+    capturing stdout/stderr/return code.
+
+    Semantic interpretation belongs to the result-processing layer.
+    """
 
     try:
-
         result = subprocess.run(
             command,
             shell=True,
             capture_output=True,
             text=True,
-            timeout=15
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+        )
+
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
+
+        print(
+            "[COMMAND RUNNER]",
+            repr(command),
+        )
+
+        print(
+            "[COMMAND RUNNER STDOUT]",
+            repr(stdout),
+        )
+
+        print(
+            "[COMMAND RUNNER STDERR]",
+            repr(stderr),
+        )
+
+        print(
+            "[COMMAND RUNNER RETURN CODE]",
+            result.returncode,
         )
 
         return {
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "returncode": result.returncode
+            "stdout": stdout,
+            "stderr": stderr,
+            "returncode": result.returncode,
         }
 
-    except Exception as e:
+    except subprocess.TimeoutExpired as exc:
+
+        stdout = exc.stdout or ""
+        stderr = exc.stderr or ""
+
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode(
+                "utf-8",
+                errors="replace",
+            )
+
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode(
+                "utf-8",
+                errors="replace",
+            )
+
+        return {
+            "stdout": stdout,
+            "stderr": (
+                f"Command timed out after "
+                f"{timeout} seconds." + (f"\n{stderr}" if stderr else "")
+            ),
+            "returncode": None,
+        }
+
+    except Exception as exc:
 
         return {
             "stdout": "",
-            "stderr": str(e),
-            "returncode": -1
+            "stderr": str(exc),
+            "returncode": -1,
         }

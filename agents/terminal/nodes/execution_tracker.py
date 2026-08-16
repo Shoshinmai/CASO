@@ -1,47 +1,81 @@
-from agents.terminal.memory.execution_manager import ExecutionMemoryManager
-from agents.terminal.models import EphemeralExecutionState
+from agents.terminal.memory.execution_manager import (
+    ExecutionMemoryManager,
+)
+from agents.terminal.models import (
+    EphemeralExecutionState,
+)
 from agents.terminal.state import TerminalState
 
 
-def execution_tracker_node(state: TerminalState) -> dict:
+def execution_tracker_node(
+    state: TerminalState,
+) -> dict:
     """
-    Initialize execution tracking for the next tool invocation.
+    Start execution tracking for the next ExecutionWorkflow step.
 
-    This node creates an ExecutionAttempt before the ToolNode executes.
-    It performs runtime bookkeeping only and does not execute tools or
-    determine execution success.
+    This node performs deterministic bookkeeping only.
+    It does not execute the capability.
     """
 
-    planner_output = state.get("planner_output")
+    workflow = state.get(
+        "execution_workflow"
+    )
 
-    if planner_output is None:
-        return {}
+    if workflow is None:
+        raise ValueError(
+            "Cannot start execution tracking without "
+            "an ExecutionWorkflow."
+        )
 
-    planning_step = planner_output.planning_step
+    # ----------------------------------------------------------
+    # Locate the next step that WorkflowRuntime will execute.
+    # ----------------------------------------------------------
 
-    if planning_step is None:
-        return {}
+    next_step = next(
+        (
+            step
+            for step in workflow.steps
+            if step.status.value == "pending"
+        ),
+        None,
+    )
 
-    ephemeral = state.get("ephemeral_execution_state")
+    if next_step is None:
+        raise ValueError(
+            "ExecutionWorkflow has no pending step "
+            "to execute."
+        )
+
+    # ----------------------------------------------------------
+    # Re-entry protection
+    # ----------------------------------------------------------
+
+    ephemeral = state.get(
+        "ephemeral_execution_state"
+    )
 
     if ephemeral is None:
         ephemeral = EphemeralExecutionState()
 
+    if ephemeral.current_attempt_id is not None:
+        return {
+            "ephemeral_execution_state": ephemeral,
+        }
+
+    # ----------------------------------------------------------
+    # Start execution attempt
+    # ----------------------------------------------------------
+
     attempt = ExecutionMemoryManager.start_attempt(
         execution_memory=state["execution_memory"],
-        capability=planning_step.capability,
-        strategy=planning_step.strategy,
-        arguments=planning_step.args,
+        capability=next_step.capability,
+        strategy=next_step.description,
+        arguments=next_step.arguments,
     )
 
     ephemeral.current_attempt_id = attempt.attempt_id
 
-    if (
-        ephemeral.current_attempt_id is not None
-        and ExecutionMemoryManager.current_attempt(state["execution_memory"])
-        is not None
-    ):
-        return {
-            "execution_memory": state["execution_memory"],
-            "ephemeral_execution_state": ephemeral,
-        }
+    return {
+        "execution_memory": state["execution_memory"],
+        "ephemeral_execution_state": ephemeral,
+    }

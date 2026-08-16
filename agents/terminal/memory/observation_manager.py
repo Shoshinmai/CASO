@@ -1,12 +1,22 @@
 from agents.terminal.memory import artifact_store
-from agents.terminal.memory.execution_manager import ExecutionMemoryManager
-from agents.terminal.result_processing.models import ArtifactAction
-from agents.terminal.result_processing.state_mutator import mutate_state
+from agents.terminal.memory.execution_manager import (
+    ExecutionMemoryManager,
+)
+from agents.terminal.result_processing.models import (
+    ArtifactAction,
+)
+from agents.terminal.result_processing.state_mutator import (
+    mutate_state,
+)
 from agents.terminal.state import TerminalState
 
-def observation_manager_node(state: TerminalState):
-    
-    processed = state.get("runtime_processing_result")
+
+def observation_manager_node(
+    state: TerminalState,
+):
+    processed = state.get(
+        "runtime_processing_result"
+    )
 
     if processed is None:
         raise RuntimeError(
@@ -17,16 +27,28 @@ def observation_manager_node(state: TerminalState):
     # Persist artifact if requested
     # ------------------------------------------
 
-    artifact_ids = list(state.get("artifact_ids", []))
+    artifact_ids = list(
+        state.get(
+            "artifact_ids",
+            [],
+        )
+    )
+
+    artifact_id = None
 
     decision = processed.artifact_decision
-    print("\n[OBSERVATION DECISION]")
-    print(decision.model_dump())
-    
+
+    print(
+        "\n[OBSERVATION DECISION]"
+    )
+    print(
+        decision.model_dump()
+    )
+
     if (
-    decision.action == ArtifactAction.STORE
-    and decision.artifact is not None
-):
+        decision.action == ArtifactAction.STORE
+        and decision.artifact is not None
+    ):
         artifact = decision.artifact
 
         artifact_id = artifact_store.save(
@@ -35,9 +57,17 @@ def observation_manager_node(state: TerminalState):
             data=artifact.data,
         )
 
-        artifact_ids.append(artifact_id)
-    
-    ephemeral = state.get("ephemeral_execution_state")
+        artifact_ids.append(
+            artifact_id
+        )
+
+    # ------------------------------------------
+    # Associate artifact with execution attempt
+    # ------------------------------------------
+
+    ephemeral = state.get(
+        "ephemeral_execution_state"
+    )
 
     if (
         artifact_id is not None
@@ -45,11 +75,13 @@ def observation_manager_node(state: TerminalState):
         and ephemeral.current_attempt_id is not None
     ):
         ExecutionMemoryManager.add_artifact(
-            execution_memory=state["execution_memory"],
+            execution_memory=state[
+                "execution_memory"
+            ],
             attempt_id=ephemeral.current_attempt_id,
             artifact_id=artifact_id,
         )
-        
+
     # ------------------------------------------
     # Deterministic memory update
     # ------------------------------------------
@@ -60,16 +92,22 @@ def observation_manager_node(state: TerminalState):
     )
 
     # ------------------------------------------
-    # Transitional compatibility
+    # Clear execution tracking
+    #
+    # The artifact association must happen BEFORE
+    # clearing current_attempt_id.
     # ------------------------------------------
-    
-    ephemeral = state.get("ephemeral_execution_state")
 
     if ephemeral is not None:
         ephemeral.current_attempt_id = None
 
     return {
         "artifact_ids": artifact_ids,
-        "active_memory": state["active_memory"],
-        "execution_memory": state["execution_memory"],
+        "active_memory": state[
+            "active_memory"
+        ],
+        "execution_memory": state[
+            "execution_memory"
+        ],
+        "ephemeral_execution_state": ephemeral,
     }

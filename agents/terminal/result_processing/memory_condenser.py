@@ -34,8 +34,8 @@ def condense_memory(
     
     response = call_nvidia(
         prompt,
-        # "meta/llama-3.1-8b-instruct",
-        "nvidia/nemotron-3-ultra-550b-a55b",
+        "openai/gpt-oss-20b",
+        # "nvidia/nemotron-3-ultra-550b-a55b",
         subagent=True,
         state_model=MemoryUpdateProposal,
     )

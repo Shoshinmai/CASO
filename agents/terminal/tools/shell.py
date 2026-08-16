@@ -6,64 +6,50 @@ from agents.terminal.tools.command_runner import run_command
 @tool
 def run_terminal(command: str) -> dict:
     """
-    PURPOSE
-    -------
-    Execute a single Windows terminal command.
+    Execute exactly one Windows terminal command.
 
-    This is the fallback capability of the Terminal Agent.
+    This is the fallback terminal capability of the Terminal Agent.
 
-    Prefer specialized capabilities whenever they can accomplish
-    the user's goal.
+    Specialized capabilities should be preferred when they directly
+    satisfy the objective.
 
-    USE THIS CAPABILITY WHEN
-    ------------------------
-    - No specialized capability exists.
-    - Git operations.
-    - Python execution.
-    - Package managers.
-    - Windows utilities.
-    - System inspection.
-    - Environment diagnostics.
-    - Network utilities.
-    - Custom shell workflows.
+    The command may be read-only or modifying depending on the
+    current objective.
 
-    DO NOT USE THIS CAPABILITY WHEN
-    -------------------------------
-    - search_files can locate the file.
-    - list_directory can inspect folders.
-    - read_file can read the required file.
-    - replace_text can modify a file.
-    - Any other specialized capability directly solves the task.
-
-    COMMAND RULES
-    -------------
-    - Generate exactly ONE command.
+    Command rules:
+    - Exactly one command.
     - Never chain commands.
     - Do not use && or ||.
-    - Prefer read-only commands unless the user's request explicitly
-      requires modification.
+    - Do not use multiple independent commands.
+    - The command must directly contribute to the current objective.
 
-    IMPORTANT
-    ---------
-    This capability should only be selected after specialized
-    capabilities have been considered.
-
-    Returns
-    -------
-    stdout
-    stderr
-    return_code
-    success
+    Returns:
+        success
+        output
+        error
+        return_code
     """
 
     result = run_command(command)
 
+    # command_runner currently exposes `returncode`.
+    # Keep the adapter tolerant of the normalized `return_code`
+    # spelling as well.
+    return_code = result.get(
+        "return_code",
+        result.get("returncode", -1),
+    )
+
     return {
-        "success": result["returncode"] == 0,
-        "output": result["stdout"],
-        "error": result["stderr"],
-        "return_code": result["returncode"],
+        "success": return_code == 0,
+        "output": result.get("stdout", ""),
+        "error": result.get("stderr", ""),
+        "return_code": return_code,
     }
 
 
-# print(run_terminal.invoke({"command": "where python"}))
+# print(
+#     run_terminal.invoke(
+#         {"command": "where python"}
+#     )
+# )

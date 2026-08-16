@@ -3,6 +3,7 @@ from typing import Annotated, Literal, Optional, TypedDict
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
 
+from agents.terminal.critics.integration import CriticRuntimeEvent
 from agents.terminal.models import (
     ActiveTaskMemory,
     ArtifactReference,
@@ -45,6 +46,8 @@ class TerminalState(TypedDict):
     task_plan: TaskPlan | None
     
     execution_workflow: ExecutionWorkflow | None
+    
+    critic_runtime_event: CriticRuntimeEvent | None
 
     # ==========================================================
     # GRAPH / TOOL PROTOCOL

@@ -165,9 +165,6 @@ def format_task_plan(
 def format_execution_summary(
     execution_memory: ExecutionMemory,
 ) -> str:
-    """
-    Build a compact planner-facing execution summary.
-    """
 
     if not execution_memory.attempts:
         return "No execution history available."
@@ -177,12 +174,26 @@ def format_execution_summary(
     for attempt in execution_memory.attempts[-5:]:
 
         sections.append(
-            f"- Step {attempt.step}: "
-            f"{attempt.strategy} "
-            f"({attempt.status.value})"
+            "\n".join(
+                [
+                    f"Attempt {attempt.step}",
+                    f"- Capability: {attempt.capability}",
+                    f"- Strategy: {attempt.strategy}",
+                    f"- Status: {attempt.status.value}",
+                    f"- Progress made: {attempt.progress_made}",
+                    f"- Outcome: {attempt.outcome or 'None'}",
+                    f"- Error: {attempt.error or 'None'}",
+                    (
+                        f"- Artifacts: "
+                        f"{', '.join(attempt.artifact_ids)}"
+                        if attempt.artifact_ids
+                        else "- Artifacts: None"
+                    ),
+                ]
+            )
         )
 
-    return "\n".join(sections)
+    return "\n\n".join(sections)
 
 def format_artifact_catalog(
     artifact_references: list[ArtifactReference],

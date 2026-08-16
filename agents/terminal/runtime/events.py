@@ -37,6 +37,7 @@ class RuntimeEvent(StrEnum):
     TASK_READY = "task_ready"
     TASK_STARTED = "task_started"
     TASK_COMPLETED = "task_completed"
+    PLAN_EXHAUSTED = "plan_exhausted"
     TASK_BLOCKED = "task_blocked"
     TASK_FAILED = "task_failed"
     TASK_CANCELLED = "task_cancelled"

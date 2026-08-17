@@ -94,9 +94,26 @@ class TaskPlanMaterializer:
         Convert a PlannerTask into a runtime TaskItem.
         """
 
-        runtime_dependencies = [
-            dependency_mapping[dependency] for dependency in planner_task.dependencies
-        ]
+        runtime_dependencies = []
+
+        for dependency in planner_task.dependencies:
+
+            runtime_dependency_id = dependency_mapping.get(
+                dependency
+            )
+
+            if runtime_dependency_id is None:
+                raise ValueError(
+                    "Planner produced an invalid dependency "
+                    f"'{dependency}' for task "
+                    f"'{planner_task.planner_task_id}'. "
+                    "Dependencies must reference another "
+                    "planner_task_id from the same planning output."
+                )
+
+            runtime_dependencies.append(
+                runtime_dependency_id
+            )
 
         return TaskItem(
             task_id=task_id,

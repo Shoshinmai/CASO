@@ -308,6 +308,97 @@ def runtime_critic_result_node(
 
     event = runtime_event.event
     decision_context = runtime_event.context
+    
+    # ==========================================================
+    # GOAL_COMPLETED
+    # ==========================================================
+    #
+    # The Critic has semantically determined that the overall
+    # user goal has been satisfied.
+    #
+    # This is the terminal cleanup boundary.
+    #
+    # Do not allow:
+    #
+    #   completed ExecutionWorkflow
+    #   active current_attempt_id
+    #   IN_PROGRESS TaskItem
+    #
+    # to survive into FINISHED state.
+    # ==========================================================
+
+    if event == RuntimeEvent.GOAL_COMPLETED:
+
+        task_plan = state.get(
+            "task_plan",
+        )
+
+        if task_plan is None:
+            raise ValueError(
+                "GOAL_COMPLETED received without a TaskPlan."
+            )
+
+        # ------------------------------------------------------
+        # Finalize any task that is still marked IN_PROGRESS.
+        #
+        # This can happen when the Critic directly determines
+        # that the overall goal is satisfied rather than first
+        # emitting TASK_COMPLETED for the final task.
+        # ------------------------------------------------------
+
+        current_task = TaskPlanManager.get_in_progress_task(
+            plan=task_plan,
+        )
+
+        if current_task is not None:
+
+            TaskPlanManager.complete_task(
+                plan=task_plan,
+                task_id=current_task.task_id,
+            )
+
+            TaskPlanManager.update_task_readiness(
+                plan=task_plan,
+            )
+
+        # ------------------------------------------------------
+        # The tactical workflow is no longer relevant once the
+        # overall goal has been completed.
+        # ------------------------------------------------------
+
+        state["execution_workflow"] = None
+
+        # ------------------------------------------------------
+        # The execution attempt should already have been closed
+        # by execution_memory_finalize_node.
+        #
+        # This is a defensive terminal cleanup.
+        # ------------------------------------------------------
+
+        ephemeral = state.get(
+            "ephemeral_execution_state",
+        )
+
+        if ephemeral is not None:
+            ephemeral.current_attempt_id = None
+
+        # ------------------------------------------------------
+        # Now transition the runtime into FINISHED.
+        # ------------------------------------------------------
+
+        RuntimeKernel.handle_event(
+            runtime_state=runtime_state,
+            event=RuntimeEvent.GOAL_COMPLETED,
+            decision_context=decision_context,
+        )
+
+        return {
+            "runtime_state": runtime_state,
+            "task_plan": task_plan,
+            "execution_workflow": None,
+            "ephemeral_execution_state": ephemeral,
+            "critic_runtime_event": None,
+        }
 
     # ----------------------------------------------------------
     # TASK_COMPLETED

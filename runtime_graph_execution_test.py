@@ -53,35 +53,24 @@ config = {"configurable": {"thread_id": "caso-4"}}
 # test_terminal_agent_failed_command()
 
 
-def test_terminal_agent_replanning():
+def test_terminal_agent_retry_path():
 
     initial_state = {
         "goal": (
-            "Perform a read-only multi-step investigation of the current CASO project "
-        "using one continuous execution workflow. "
-        
-        "Step 1: Locate the file named runtime_graph_execution_test.py and return "
-        "its exact absolute path. "
-        
-        "Step 2: Using the exact path discovered in Step 1, read the file and "
-        "identify the Python module imported on the first non-comment import line. "
-        
-        "Step 3: Using the exact module name discovered in Step 2, determine the "
-        "corresponding Python source filename and locate that exact file in the "
-        "current CASO project. "
-        
-        "Step 4: Using the exact source path discovered in Step 3, read the source "
-        "file and identify the function or symbol used to define the main graph "
-        "entry point. "
-        
-        "Step 5: Using all information discovered by the previous steps, produce "
-        "a final report containing the exact test file path, imported module, "
-        "runtime graph source path, and main graph entry point. "
-        
-        "The important requirement is that each step must use information produced "
-        "by the immediately preceding step rather than independently rediscovering "
-        "the information. Do not hard-code any paths or filenames. "
-        "Do not modify, create, or delete any files."
+            """
+            Run a terminal command that uses a marker file named
+terminal_retry_once_marker.txt.
+
+On the first execution:
+- if the marker does not exist, create it and exit with a non-zero
+  return code.
+
+On a subsequent execution:
+- if the marker exists, print "RETRY_SUCCESS", delete the marker,
+  and exit with code 0.
+
+The task should be considered complete only after the command succeeds.
+"""
         ),
     }
 
@@ -94,14 +83,15 @@ def test_terminal_agent_replanning():
 
     print("\n")
     print("=" * 60)
-    print("TERMINAL AGENT REPLANNING TEST")
+    print("7.2.x.2 — RETRY PATH TEST")
     print("=" * 60)
 
     print("\n[FINAL STATE]")
     print(result)
 
 
-# test_terminal_agent_replanning()
+test_terminal_agent_retry_path()
+
 
 def test_terminal_agent_final_termination_cleanup():
 
@@ -145,4 +135,4 @@ def test_terminal_agent_final_termination_cleanup():
     print("ALL TERMINATION/CLEANUP INVARIANTS PASSED")
 
 
-test_terminal_agent_final_termination_cleanup()
+# test_terminal_agent_final_termination_cleanup()

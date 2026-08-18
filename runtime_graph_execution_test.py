@@ -57,20 +57,8 @@ def test_terminal_agent_retry_path():
 
     initial_state = {
         "goal": (
-            """
-            Run a terminal command that uses a marker file named
-terminal_retry_once_marker.txt.
-
-On the first execution:
-- if the marker does not exist, create it and exit with a non-zero
-  return code.
-
-On a subsequent execution:
-- if the marker exists, print "RETRY_SUCCESS", delete the marker,
-  and exit with code 0.
-
-The task should be considered complete only after the command succeeds.
-"""
+            """Update the env libs in requirements.txt in this project using the pip-review in the auto mode and then
+             update the requirements.txt"""
         ),
     }
 
@@ -89,9 +77,7 @@ The task should be considered complete only after the command succeeds.
     print("\n[FINAL STATE]")
     print(result)
 
-
 test_terminal_agent_retry_path()
-
 
 def test_terminal_agent_final_termination_cleanup():
 

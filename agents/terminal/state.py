@@ -37,7 +37,7 @@ class TerminalState(TypedDict):
 
     thread_memory: ThreadMemory
 
-    persistent_memory: PersistentMemory
+    persistent_memory: PersistentMemory 
 
     ephemeral_execution_state: EphemeralExecutionState
     

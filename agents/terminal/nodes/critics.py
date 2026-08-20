@@ -17,12 +17,12 @@ def terminal_critic_node(state):
     It does not execute the resulting decision.
     """
 
+    print("\n========== ACTIVE MEMORY ==========")
+    print(state["active_memory"])
+    
     critic_context = build_critic_context(
         state=state,
     )
-
-    print("\n========== CRITIC CONTEXT ==========")
-    print(critic_context.model_dump())
 
     prompt = TERMINAL_CRITIC_PROMPT.format(**critic_context.model_dump())
 

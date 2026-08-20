@@ -167,6 +167,22 @@ class TaskPlanManager:
         task.status = TaskItemStatus.IN_PROGRESS
         
     @staticmethod
+    def get_task(
+        *,
+        plan: TaskPlan,
+        task_id: str,
+    ) -> TaskItem:
+        """
+        Return a specific task by ID.
+
+        This is a read-only public lookup used by runtime components.
+        """
+        return TaskPlanManager._find_task(
+            plan=plan,
+            task_id=task_id,
+        )
+        
+    @staticmethod
     def retry_task(
         *,
         plan: TaskPlan,
@@ -470,6 +486,52 @@ class TaskPlanManager:
                 return task
 
         return None
+    
+    @staticmethod
+    def get_in_progress_tasks(
+        *,
+        plan: TaskPlan,
+    ) -> list[TaskItem]:
+        """
+        Return all tasks currently in progress.
+
+        Tasks are returned in planner-defined order.
+        """
+        return [
+            task
+            for task in plan.tasks
+            if task.status == TaskItemStatus.IN_PROGRESS
+        ]
+    
+    @staticmethod
+    def start_ready_tasks(
+        *,
+        plan: TaskPlan,
+        limit: int,
+    ) -> list[TaskItem]:
+        """
+        Start up to `limit` READY tasks.
+
+        Tasks are selected in planner-defined order.
+
+        The TaskPlanManager remains the sole owner of TaskItem lifecycle
+        transitions. The scheduler decides how many tasks may be admitted;
+        this manager performs READY -> IN_PROGRESS.
+        """
+
+        if limit < 1:
+            return []
+
+        ready_tasks = TaskPlanManager.get_ready_tasks(
+            plan=plan,
+        )
+
+        selected_tasks = ready_tasks[:limit]
+
+        for task in selected_tasks:
+            task.status = TaskItemStatus.IN_PROGRESS
+
+        return selected_tasks
     
     @staticmethod
     def is_plan_complete(

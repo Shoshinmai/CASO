@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.prebuilt import ToolNode
+from langgraph.runtime import Runtime
 
+from langchain_core.runnables import RunnableConfig
 from agents.terminal.nodes.tool_compiler import (
     compile_execution_step,
 )
@@ -35,18 +37,15 @@ class WorkflowRuntime:
         *,
         tool_node: ToolNode | None = None,
     ) -> None:
-        self.tool_node = (
-            tool_node
-            if tool_node is not None
-            else ToolNode(TOOLS)
-        )
+        self.tool_node = tool_node if tool_node is not None else ToolNode(TOOLS)
+        
 
-    def execute_next_step(
+    async def execute_next_step(
         self,
         workflow: ExecutionWorkflow,
     ) -> dict:
         """
-        Execute the current workflow step.
+        Execute the current workflow step asynchronously.
 
         Returns the ToolNode result so that the existing
         observation/result-processing pipeline can consume it.
@@ -65,9 +64,7 @@ class WorkflowRuntime:
             return {
                 "workflow": workflow,
                 "tool_result": None,
-                "completed": (
-                    workflow.status.value == "completed"
-                ),
+                "completed": (workflow.status.value == "completed"),
             }
 
         WorkflowManager.start_step(
@@ -80,12 +77,12 @@ class WorkflowRuntime:
                 step=step,
             )
 
-            tool_result = self.tool_node.invoke(
+            tool_result = await self.tool_node.ainvoke(
                 {
                     "messages": [
                         tool_call_message,
                     ]
-                }
+                },
             )
 
         except Exception:
@@ -104,9 +101,7 @@ class WorkflowRuntime:
         return {
             "workflow": workflow,
             "tool_result": tool_result,
-            "completed": (
-                workflow.status.value == "completed"
-            ),
+            "completed": (workflow.status.value == "completed"),
         }
 
     @staticmethod
@@ -137,9 +132,7 @@ class WorkflowRuntime:
             return
 
         tool_messages = [
-            message
-            for message in messages
-            if isinstance(message, ToolMessage)
+            message for message in messages if isinstance(message, ToolMessage)
         ]
 
         if not tool_messages:
@@ -149,10 +142,7 @@ class WorkflowRuntime:
             )
             return
 
-        if any(
-            message.status == "error"
-            for message in tool_messages
-        ):
+        if any(message.status == "error" for message in tool_messages):
             WorkflowManager.fail_step(
                 workflow=workflow,
                 step_id=step_id,

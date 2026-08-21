@@ -46,7 +46,7 @@ def runtime_planner_result_node(
     }
 
 
-def execute_current_workflow_step(
+async def execute_current_workflow_step(
     state: TerminalState,
 ) -> dict:
     """
@@ -63,7 +63,7 @@ def execute_current_workflow_step(
 
     workflow_runtime = WorkflowRuntime()
 
-    result = workflow_runtime.execute_next_step(
+    result = await workflow_runtime.execute_next_step(
         workflow,
     )
 

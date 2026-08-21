@@ -12,11 +12,6 @@ from agents.terminal.task_executor.models import ExecutionWorkflow
 class TaskExecutionStatus(StrEnum):
     """
     Runtime-local lifecycle of one task execution context.
-
-    This is separate from TaskItemStatus.
-
-    TaskItemStatus belongs to the TaskPlan.
-    TaskExecutionStatus belongs to the scheduler/runtime execution.
     """
 
     CREATED = "created"
@@ -29,12 +24,6 @@ class TaskExecutionStatus(StrEnum):
 class TaskExecutionContext(BaseModel):
     """
     Isolated runtime context for one concurrently executing TaskItem.
-
-    A TaskExecutionContext is the ownership boundary for all runtime
-    execution state associated with a single task.
-
-    It does not own TaskPlan lifecycle state. That remains the
-    responsibility of TaskPlanManager.
     """
 
     execution_id: str = Field(
@@ -59,16 +48,12 @@ class TaskExecutionContext(BaseModel):
 
     workflow: ExecutionWorkflow | None = Field(
         default=None,
-        description="Workflow currently associated with this task execution.",
+        description="Workflow associated with this task execution.",
     )
 
     active_attempt_id: str | None = Field(
         default=None,
-        description=(
-            "ExecutionMemory attempt currently active for this task. "
-            "This is task-scoped so concurrent tasks do not overwrite "
-            "one another."
-        ),
+        description="Currently active execution-memory attempt for this task.",
     )
 
     result: dict[str, Any] | None = Field(
@@ -84,4 +69,52 @@ class TaskExecutionContext(BaseModel):
     metadata: dict[str, Any] = Field(
         default_factory=dict,
         description="Additional runtime metadata for this execution.",
+    )
+
+
+class TaskExecutionResult(BaseModel):
+    """
+    Immutable-style terminal result returned by AsyncTaskRunner.
+
+    This object communicates what happened during one task execution.
+    It does not mutate TaskPlan or scheduler state itself.
+    """
+
+    execution_id: str = Field(
+        min_length=1,
+        description="Task execution context that produced this result.",
+    )
+
+    plan_id: str = Field(
+        min_length=1,
+        description="TaskPlan associated with the execution.",
+    )
+
+    task_id: str = Field(
+        min_length=1,
+        description="TaskItem that was executed.",
+    )
+
+    status: TaskExecutionStatus = Field(
+        description="Terminal status of the task execution.",
+    )
+
+    workflow_id: str | None = Field(
+        default=None,
+        description="Workflow used during execution, if one was created.",
+    )
+
+    result: dict[str, Any] | None = Field(
+        default=None,
+        description="Structured successful execution result.",
+    )
+
+    error: str | None = Field(
+        default=None,
+        description="Structured or textual failure information.",
+    )
+
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Additional execution metadata.",
     )

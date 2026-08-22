@@ -17,7 +17,7 @@ from agents.terminal.utils.memory_formatter import format_active_memory
 from agents.terminal.utils.normalized_result_formatter import format_normalized_result
 
 
-def process_tool_result(
+async def process_tool_result(
     *,
     state: TerminalState,
     tool_name: str,
@@ -50,7 +50,7 @@ def process_tool_result(
         artifact_decision=_artifact_decision,
     )
 
-    proposal = condense_memory(
+    proposal = await condense_memory(
         goal=state["goal"],
         active_memory=format_active_memory(state["active_memory"]),
         formatted_observation=formatted_observation,

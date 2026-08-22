@@ -8,7 +8,7 @@ from agents.terminal.prompts.critics_prompt import TERMINAL_CRITIC_PROMPT
 from llm.llmclient import call_nvidia
 
 
-def terminal_critic_node(state):
+async def terminal_critic_node(state):
     """
     Evaluate the current task objective and produce a
     structured CriticOutput.
@@ -26,7 +26,7 @@ def terminal_critic_node(state):
 
     prompt = TERMINAL_CRITIC_PROMPT.format(**critic_context.model_dump())
 
-    critic_output = call_nvidia(
+    critic_output = await call_nvidia(
         prompt,
         # "nvidia/nemotron-3-super-120b-a12b",
         # "nvidia/nemotron-3-ultra-550b-a55b",

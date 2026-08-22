@@ -74,7 +74,7 @@ async def execute_current_workflow_step(
     }
 
 
-def runtime_workflow_execution_node(
+async def runtime_workflow_execution_node(
     state: TerminalState,
 ) -> dict:
     """
@@ -92,7 +92,7 @@ def runtime_workflow_execution_node(
 
     runtime_state = state["runtime_state"]
 
-    result = execute_current_workflow_step(
+    result = await execute_current_workflow_step(
         state,
     )
 

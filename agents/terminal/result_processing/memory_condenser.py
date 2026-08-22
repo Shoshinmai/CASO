@@ -4,7 +4,7 @@ from agents.terminal.result_processing.models import (
 )
 from llm.llmclient import call_nvidia, call_ollama
 
-def condense_memory(
+async def condense_memory(
     *,
     goal: str,
     active_memory: str,
@@ -32,7 +32,7 @@ def condense_memory(
     #     state_model=MemoryUpdateProposal,
     # )
     
-    response = call_nvidia(
+    response = await call_nvidia(
         prompt,
         "openai/gpt-oss-20b",
         # "nvidia/nemotron-3-ultra-550b-a55b",

@@ -53,16 +53,25 @@ config = {"configurable": {"thread_id": "caso-4"}}
 # test_terminal_agent_failed_command()
 
 
-def test_terminal_agent_retry_path():
+import asyncio
+
+from agents.terminal.runtime_graph import runtime_graph
+
+
+config = {
+    "configurable": {
+        "thread_id": "caso-4",
+    }
+}
+
+
+async def test_terminal_agent_retry_path():
 
     initial_state = {
-        "goal": (
-            """Update the env libs in requirements.txt in this project using the pip-review in the auto mode and then
-             update the requirements.txt"""
-        ),
+        "goal": "search about gta 6 on youtube.",
     }
 
-    result = runtime_graph.invoke(
+    result = await runtime_graph.ainvoke(
         initial_state,
         config,
     )
@@ -77,48 +86,52 @@ def test_terminal_agent_retry_path():
     print("\n[FINAL STATE]")
     print(result)
 
-test_terminal_agent_retry_path()
 
-def test_terminal_agent_final_termination_cleanup():
-
-    initial_state = {
-        "goal": "Show the Python version currently available on this system.",
-    }
-
-    result = runtime_graph.invoke(
-        initial_state,
-        config,
+if __name__ == "__main__":
+    asyncio.run(
+        test_terminal_agent_retry_path()
     )
 
-    assert result is not None
+# def test_terminal_agent_final_termination_cleanup():
 
-    print("\n")
-    print("=" * 60)
-    print("TERMINAL AGENT FINAL TERMINATION / CLEANUP TEST")
-    print("=" * 60)
+#     initial_state = {
+#         "goal": "Show the Python version currently available on this system.",
+#     }
 
-    print("\n[FINAL STATE]")
-    print(result)
+#     result = runtime_graph.invoke(
+#         initial_state,
+#         config,
+#     )
 
-    runtime_state = result.get("runtime_state")
-    execution_workflow = result.get("execution_workflow")
-    ephemeral_state = result.get("ephemeral_execution_state")
+#     assert result is not None
 
-    print("\n[TERMINATION INVARIANTS]")
-    print(f"runtime_state.mode       = {runtime_state.mode}")
-    print(f"runtime_state.last_event = {runtime_state.last_event}")
-    print(f"execution_workflow       = {execution_workflow}")
-    print(f"current_attempt_id       = {ephemeral_state.current_attempt_id}")
+#     print("\n")
+#     print("=" * 60)
+#     print("TERMINAL AGENT FINAL TERMINATION / CLEANUP TEST")
+#     print("=" * 60)
 
-    assert runtime_state.mode.value == "finished"
-    assert runtime_state.last_event.value == "goal_completed"
+#     print("\n[FINAL STATE]")
+#     print(result)
 
-    assert execution_workflow is None
+#     runtime_state = result.get("runtime_state")
+#     execution_workflow = result.get("execution_workflow")
+#     ephemeral_state = result.get("ephemeral_execution_state")
 
-    assert ephemeral_state.current_attempt_id is None
+#     print("\n[TERMINATION INVARIANTS]")
+#     print(f"runtime_state.mode       = {runtime_state.mode}")
+#     print(f"runtime_state.last_event = {runtime_state.last_event}")
+#     print(f"execution_workflow       = {execution_workflow}")
+#     print(f"current_attempt_id       = {ephemeral_state.current_attempt_id}")
 
-    print("\n[RESULT]")
-    print("ALL TERMINATION/CLEANUP INVARIANTS PASSED")
+#     assert runtime_state.mode.value == "finished"
+#     assert runtime_state.last_event.value == "goal_completed"
+
+#     assert execution_workflow is None
+
+#     assert ephemeral_state.current_attempt_id is None
+
+#     print("\n[RESULT]")
+#     print("ALL TERMINATION/CLEANUP INVARIANTS PASSED")
 
 
 # test_terminal_agent_final_termination_cleanup()

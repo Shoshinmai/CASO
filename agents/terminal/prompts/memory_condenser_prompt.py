@@ -1,5 +1,5 @@
 MEMORY_CONDENSER_PROMPT = """
-REASONING BUDGET: HIGH
+REASONING BUDGET: MEDIUM
 
 You are the Memory Condenser of the Terminal Agent.
 

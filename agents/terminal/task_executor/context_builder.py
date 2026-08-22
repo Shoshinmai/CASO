@@ -117,6 +117,52 @@ def build_execution_context(
             state,
         ),
     )
+    
+def build_execution_context_for_task(
+    *,
+    state: dict[str, Any],
+    task: TaskItem,
+) -> ExecutionContext:
+    """
+    Build an Executor context for one explicitly assigned task.
+
+    Unlike build_execution_context(), this function does not
+    discover task ownership from the shared TaskPlan. The caller
+    explicitly assigns the TaskItem to the worker.
+
+    This is the concurrent-safe entry point for task-local workers.
+    """
+
+    task_plan = state.get("task_plan")
+
+    if task_plan is None:
+        raise ValueError(
+            "Cannot build execution context without a TaskPlan."
+        )
+
+    return ExecutionContext(
+        task_goal=task_plan.goal,
+        task_metadata=_build_task_metadata(
+            task_plan=task_plan,
+            task=task,
+        ),
+        objective=task.objective,
+        decision_context=_build_decision_context(
+            state,
+        ),
+        active_memory=_build_active_memory(
+            state["active_memory"],
+        ),
+        execution_summary=_build_execution_summary(
+            state["execution_memory"],
+        ),
+        artifact_catalog=_build_artifact_catalog(
+            state["artifact_references"],
+        ),
+        capabilities=_build_capabilities(
+            state,
+        ),
+    )
 
 
 def _build_task_metadata(

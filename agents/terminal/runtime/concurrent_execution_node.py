@@ -6,8 +6,8 @@ from agents.terminal.runtime.concurrent_task_executor import (
 from agents.terminal.runtime.task_execution_coordinator import (
     TaskExecutionCoordinator,
 )
-from agents.terminal.runtime.task_runner import (
-    AsyncTaskRunner,
+from agents.terminal.runtime.task_runner_impl import (
+    TaskRunner,
 )
 from agents.terminal.task_executor.task_worker import (
     TaskWorker,
@@ -55,7 +55,7 @@ async def concurrent_execution_node(
 
     worker = TaskWorker()
 
-    runner = AsyncTaskRunner(
+    runner = TaskRunner(
         worker=worker,
     )
 

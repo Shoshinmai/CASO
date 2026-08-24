@@ -27,20 +27,33 @@ def build_task_execution_snapshot(
     The snapshot contains the state needed by TaskWorker and its
     execution-context/result-processing path.
 
-    The snapshot is isolated from the central graph state:
-    mutable task/execution structures are copied so one worker
+    Mutable task/execution structures are copied so one worker
     cannot mutate another worker's state.
 
-    The TaskPlan itself is intentionally excluded as the worker
-    must not mutate central scheduling state.
+    The worker receives an isolated copy of the TaskPlan for
+    read-only execution-context construction. The authoritative
+    TaskPlan remains owned by the coordinator/reconciler path.
     """
 
-    if state.get("task_plan") is None:
+    task_plan = state.get("task_plan")
+
+    if task_plan is None:
         raise ValueError(
             "Cannot build task execution snapshot without a TaskPlan."
         )
 
     return {
+        # ------------------------------------------------------
+        # Task-local copy of the plan.
+        #
+        # Required for execution-context construction, but this
+        # is NOT the authoritative scheduling plan.
+        # ------------------------------------------------------
+
+        "task_plan": deepcopy(
+            task_plan
+        ),
+
         "task": deepcopy(
             state["task"]
         ),
@@ -103,10 +116,6 @@ def build_task_execution_snapshot(
 
         # ------------------------------------------------------
         # Explicit task identity.
-        #
-        # The worker receives the actual TaskItem separately,
-        # but keeping the ID in the snapshot makes diagnostics
-        # and task-local helpers straightforward.
         # ------------------------------------------------------
 
         "task_id": task.task_id,

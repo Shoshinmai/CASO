@@ -20,6 +20,7 @@ from agents.terminal.nodes.task_initializer import (
     task_initializer_node,
 )
 
+from agents.terminal.runtime.concurrent_execution_node import concurrent_execution_node
 from agents.terminal.runtime.consistency import (
     validate_runtime_consistency,
 )
@@ -92,18 +93,32 @@ def executor_stage_router(
 
 
 def runtime_stage_mapping() -> dict:
-    """
-    Map RuntimeStage values to graph nodes.
-    """
-
     return {
         RuntimeStage.PLANNER: "planner",
-        RuntimeStage.EXECUTOR: "executor_stage",
+        RuntimeStage.EXECUTOR: "executor_mode",
         RuntimeStage.CRITIC: "critic",
         RuntimeStage.TERMINATE: END,
         RuntimeStage.ERROR: END,
     }
 
+def executor_mode_router(
+    state: TerminalState,
+) -> str:
+    """
+    Decide whether the current TaskPlan should use the
+    concurrent execution prototype or the existing
+    single-workflow execution path.
+    """
+
+    use_concurrent_execution = state.get(
+        "use_concurrent_execution",
+        False,
+    )
+
+    if use_concurrent_execution:
+        return "concurrent_execution"
+
+    return "executor_stage"
 
 # ==========================================================
 # Runtime consistency validation
@@ -211,7 +226,15 @@ builder.add_node(
     "execution_memory_finalize",
     execution_memory_finalize_node,
 )
+builder.add_node(
+    "concurrent_execution",
+    concurrent_execution_node,
+)
 
+builder.add_node(
+    "executor_mode",
+    lambda state: {},
+)
 # ==========================================================
 # Runtime consistency node
 # ==========================================================
@@ -276,6 +299,20 @@ builder.add_conditional_edges(
     "planner_runtime",
     runtime_stage_router,
     runtime_stage_mapping(),
+)
+
+builder.add_conditional_edges(
+    "executor_mode",
+    executor_mode_router,
+    {
+        "concurrent_execution": "concurrent_execution",
+        "executor_stage": "executor_stage",
+    },
+)
+
+builder.add_edge(
+    "concurrent_execution",
+    "runtime_consistency",
 )
 
 

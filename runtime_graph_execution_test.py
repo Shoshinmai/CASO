@@ -68,7 +68,7 @@ config = {
 async def test_terminal_agent_retry_path():
 
     initial_state = {
-        "goal": "search about gta 6 on youtube.",
+        "goal": "Inspect this project's agents/terminal part and tell me how can i improve the critic's concurrency flow as i have not yet defined the critics flow for the concurrent tasks. give me a report on this improvement solution in markdown format. ",
     }
 
     result = await runtime_graph.ainvoke(

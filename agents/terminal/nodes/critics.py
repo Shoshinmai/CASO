@@ -28,9 +28,9 @@ async def terminal_critic_node(state):
 
     critic_output = await call_nvidia(
         prompt,
-        # "nvidia/nemotron-3-super-120b-a12b",
+        "nvidia/nemotron-3-super-120b-a12b",
         # "nvidia/nemotron-3-ultra-550b-a55b",
-        "openai/gpt-oss-20b",
+        # "openai/gpt-oss-20b",
         subagent=True,
         state_model=CriticOutput,
     )

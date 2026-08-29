@@ -3,9 +3,11 @@ from __future__ import annotations
 from agents.terminal.runtime.concurrent_task_executor import (
     ConcurrentTaskExecutor,
 )
+from agents.terminal.runtime.events import RuntimeEvent
 from agents.terminal.runtime.plan_execution_outcome import (
     build_plan_execution_outcome,
 )
+from agents.terminal.runtime.kernel import RuntimeKernel
 from agents.terminal.runtime.task_execution_coordinator import (
     TaskExecutionCoordinator,
 )
@@ -34,15 +36,16 @@ async def concurrent_execution_node(
     - execute dependency-aware task waves
     - receive the final coordinated execution result
     - build the deterministic PlanExecutionOutcome
-    - return plan-level concurrent execution state
+    - notify the Runtime that execution reached a stable review
+      boundary
 
     This node does not:
     - mutate individual TaskItems directly
     - execute a single shared ExecutionWorkflow
     - use TerminalState.execution_workflow as the active
       concurrent-workflow container
-    - run the existing single-task Critic lifecycle
-    - make semantic execution decisions
+    - run the Critic
+    - make semantic decisions
     """
 
     task_plan = state.get(
@@ -53,6 +56,16 @@ async def concurrent_execution_node(
         raise ValueError(
             "Cannot start concurrent execution without "
             "a TaskPlan."
+        )
+
+    runtime_state = state.get(
+        "runtime_state",
+    )
+
+    if runtime_state is None:
+        raise ValueError(
+            "Cannot start concurrent execution without "
+            "RuntimeState."
         )
 
     # ==========================================================
@@ -90,8 +103,8 @@ async def concurrent_execution_node(
     # ==========================================================
     # Build the deterministic plan-level execution snapshot.
     #
-    # Concurrent execution has now reached a stable boundary:
-    # all admitted work has finished and been reconciled.
+    # At this point every admitted execution wave has completed
+    # and its results have been reconciled.
     # ==========================================================
 
     plan_execution_outcome = (
@@ -104,13 +117,38 @@ async def concurrent_execution_node(
     )
 
     # ==========================================================
+    # Concurrent execution has reached a stable review boundary.
+    #
+    # The Runtime Kernel owns the state transition:
+    #
+    #     EXECUTING
+    #          ↓
+    #     EXECUTION_COMPLETED
+    #          ↓
+    #      REVIEWING
+    #
+    # The Critic will be invoked by the graph after this node.
+    # ==========================================================
+
+    RuntimeKernel.handle_event(
+        runtime_state=runtime_state,
+        event=RuntimeEvent.EXECUTION_COMPLETED,
+    )
+
+    # ==========================================================
     # Return authoritative concurrent execution state
     # ==========================================================
 
     return {
         "task_plan": updated_plan,
+
         "plan_execution_outcome": (
             plan_execution_outcome
         ),
+
+        # The concurrent path does not use the singular
+        # ExecutionWorkflow slot.
         "execution_workflow": None,
+
+        "runtime_state": runtime_state,
     }

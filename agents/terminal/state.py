@@ -17,6 +17,7 @@ from agents.terminal.models import (
 )
 from agents.terminal.result_processing.models import RuntimeProcessingResult
 from agents.terminal.runtime.models import RuntimeState
+from agents.terminal.runtime.plan_execution_outcome import PlanExecutionOutcome
 from agents.terminal.task_executor.models import ExecutionWorkflow
 from agents.terminal.task_plan.models import TaskPlan
 
@@ -44,6 +45,8 @@ class TerminalState(TypedDict):
     runtime_state: RuntimeState
     
     task_plan: TaskPlan | None
+    
+    plan_execution_outcome: PlanExecutionOutcome | None
     
     execution_workflow: ExecutionWorkflow | None
     

@@ -1,13 +1,34 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 from agents.terminal.runtime.concurrent_task_executor import (
     ConcurrentTaskExecutor,
+)
+from agents.terminal.runtime.task_execution import (
+    TaskExecutionResult,
 )
 from agents.terminal.runtime.task_result_reconciler import (
     TaskResultReconciler,
 )
 from agents.terminal.task_plan.manager import TaskPlanManager
 from agents.terminal.task_plan.models import TaskPlan
+
+
+@dataclass
+class CoordinatedPlanExecution:
+    """
+    Terminal result of the coordinator's execution loop.
+
+    The coordinator owns execution orchestration and preserves the
+    task-local terminal results produced across all execution waves.
+    """
+
+    plan: TaskPlan
+
+    task_results: list[TaskExecutionResult] = field(
+        default_factory=list,
+    )
 
 
 class TaskExecutionCoordinator:
@@ -19,6 +40,7 @@ class TaskExecutionCoordinator:
     - start one execution wave
     - run the wave concurrently
     - reconcile all results centrally
+    - preserve results across execution waves
     - continue with the next READY wave
 
     This component owns orchestration only.
@@ -28,6 +50,7 @@ class TaskExecutionCoordinator:
     - reason about task objectives
     - mutate TaskItems directly
     - perform LLM calls
+    - make semantic critic decisions
     """
 
     def __init__(
@@ -42,11 +65,16 @@ class TaskExecutionCoordinator:
         *,
         plan: TaskPlan,
         state: dict,
-    ) -> TaskPlan:
+    ) -> CoordinatedPlanExecution:
         """
         Execute the task plan wave-by-wave until completion or
         until no further executable work exists.
+
+        Returns the authoritative TaskPlan together with all terminal
+        TaskExecutionResults produced during this coordinator run.
         """
+
+        all_task_results: list[TaskExecutionResult] = []
 
         # ------------------------------------------------------
         # Establish initial readiness.
@@ -81,28 +109,14 @@ class TaskExecutionCoordinator:
             # --------------------------------------------------
             # No READY work.
             #
-            # This means either:
-            # - tasks are still being executed elsewhere, or
-            # - all remaining work is blocked/terminal.
+            # In this coordinator, each wave is fully awaited.
+            # Therefore, no active workers remain here and there
+            # is no valid next wave to execute.
             #
-            # In this coordinator, there are no other running
-            # workers because each wave is fully awaited, so
-            # there is no valid next wave.
+            # The plan has reached a stable execution boundary.
             # --------------------------------------------------
 
             if not ready_tasks:
-
-                blocked_tasks = (
-                    TaskPlanManager.get_blocked_tasks(
-                        plan=plan,
-                    )
-                )
-
-                if blocked_tasks:
-                    break
-
-                # No READY tasks and no blocked tasks means the
-                # plan cannot currently make progress.
                 break
 
             # --------------------------------------------------
@@ -133,6 +147,15 @@ class TaskExecutionCoordinator:
             )
 
             # --------------------------------------------------
+            # Preserve terminal task-local evidence from this
+            # wave before moving to the next one.
+            # --------------------------------------------------
+
+            all_task_results.extend(
+                results,
+            )
+
+            # --------------------------------------------------
             # Reconcile all results only after the complete wave
             # has finished.
             # --------------------------------------------------
@@ -148,4 +171,7 @@ class TaskExecutionCoordinator:
             # Loop back and compute the next wave.
             # --------------------------------------------------
 
-        return plan
+        return CoordinatedPlanExecution(
+            plan=plan,
+            task_results=all_task_results,
+        )

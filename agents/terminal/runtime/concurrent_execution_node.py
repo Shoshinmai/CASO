@@ -3,16 +3,19 @@ from __future__ import annotations
 from agents.terminal.runtime.concurrent_task_executor import (
     ConcurrentTaskExecutor,
 )
+from agents.terminal.runtime.plan_execution_outcome import (
+    build_plan_execution_outcome,
+)
 from agents.terminal.runtime.task_execution_coordinator import (
     TaskExecutionCoordinator,
 )
 from agents.terminal.runtime.task_runner_impl import (
     TaskRunner,
 )
+from agents.terminal.state import TerminalState
 from agents.terminal.task_executor.task_worker import (
     TaskWorker,
 )
-from agents.terminal.state import TerminalState
 
 
 async def concurrent_execution_node(
@@ -29,7 +32,9 @@ async def concurrent_execution_node(
     - receive the authoritative TaskPlan from TerminalState
     - construct the concurrent execution stack
     - execute dependency-aware task waves
-    - return the reconciled TaskPlan
+    - receive the final coordinated execution result
+    - build the deterministic PlanExecutionOutcome
+    - return plan-level concurrent execution state
 
     This node does not:
     - mutate individual TaskItems directly
@@ -37,6 +42,7 @@ async def concurrent_execution_node(
     - use TerminalState.execution_workflow as the active
       concurrent-workflow container
     - run the existing single-task Critic lifecycle
+    - make semantic execution decisions
     """
 
     task_plan = state.get(
@@ -72,16 +78,39 @@ async def concurrent_execution_node(
     # Execute dependency-aware waves
     # ==========================================================
 
-    updated_plan = await coordinator.execute_plan(
-        plan=task_plan,
-        state=state,
+    coordinated_execution = (
+        await coordinator.execute_plan(
+            plan=task_plan,
+            state=state,
+        )
+    )
+
+    updated_plan = coordinated_execution.plan
+
+    # ==========================================================
+    # Build the deterministic plan-level execution snapshot.
+    #
+    # Concurrent execution has now reached a stable boundary:
+    # all admitted work has finished and been reconciled.
+    # ==========================================================
+
+    plan_execution_outcome = (
+        build_plan_execution_outcome(
+            task_plan=updated_plan,
+            task_results=(
+                coordinated_execution.task_results
+            ),
+        )
     )
 
     # ==========================================================
-    # Return only authoritative concurrent execution state
+    # Return authoritative concurrent execution state
     # ==========================================================
 
     return {
         "task_plan": updated_plan,
+        "plan_execution_outcome": (
+            plan_execution_outcome
+        ),
         "execution_workflow": None,
     }

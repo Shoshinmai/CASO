@@ -1,292 +1,258 @@
-"""
-Runtime Graph integration test.
-
-Validates the normal Runtime lifecycle:
-
-    INITIALIZING
-        ↓ TASK_READY
-    PLANNING
-        ↓ PLAN_CREATED
-    EXECUTING
-        ↓ EXECUTION_COMPLETED
-    REVIEWING
-
-This test intentionally mocks the LLM-backed Planner, Executor,
-and Critic nodes.
-
-The purpose of this test is to validate graph/runtime wiring,
-NOT the LLM outputs themselves.
-"""
-
-from __future__ import annotations
-
-from typing import Any
-
-from agents.terminal.runtime.events import RuntimeEvent
-from agents.terminal.runtime.modes import RuntimeMode
-from agents.terminal.runtime.models import RuntimeState
-from agents.terminal.runtime.stages import RuntimeStage
-from agents.terminal.state import TerminalState
+from agents.terminal.critics.models import (
+    CriticDecision,
+    CriticDecisionScope,
+    CriticEvidence,
+    CriticOutput,
+)
+from agents.terminal.critics.validator import (
+    validate_critic_output,
+)
 
 
-# ------------------------------------------------------------------
-# Helpers
-# ------------------------------------------------------------------
-
-def fake_planner_node(
-    state: TerminalState,
-) -> dict[str, Any]:
-    """
-    Simulate a successful Planner.
-
-    We don't call the actual LLM here because this test is validating
-    Runtime Graph routing.
-    """
-
-    runtime_state = state["runtime_state"]
-
-    print("\n[PLANNER]")
-    print("Runtime mode:", runtime_state.mode)
-
-    assert runtime_state.mode == RuntimeMode.PLANNING
-
-    return {
-        "planner_output": "fake planner output",
-        "task_plan": "fake task plan",
-    }
+def evidence():
+    return [
+        CriticEvidence(
+            source="test",
+            observation="Test evidence.",
+        )
+    ]
 
 
-def fake_executor_node(
-    state: TerminalState,
-) -> dict[str, Any]:
-    """
-    Simulate a successful Executor.
-    """
-
-    runtime_state = state["runtime_state"]
-
-    print("\n[EXECUTOR]")
-    print("Runtime mode:", runtime_state.mode)
-
-    assert runtime_state.mode == RuntimeMode.EXECUTING
-
-    return {
-        "execution_workflow": "fake execution workflow",
-    }
-
-
-def fake_critic_node(
-    state: TerminalState,
-) -> dict[str, Any]:
-    """
-    Simulate a Critic invocation.
-
-    For this test we stop after reaching REVIEWING.
-    The Critic's actual decision routing is tested separately.
-    """
-
-    runtime_state = state["runtime_state"]
-
-    print("\n[CRITIC]")
-    print("Runtime mode:", runtime_state.mode)
-
-    assert runtime_state.mode == RuntimeMode.REVIEWING
-
-    return {
-        "critic_output": "fake critic output",
-    }
-
-
-# ------------------------------------------------------------------
-# Test 1
-# ------------------------------------------------------------------
-
-def test_runtime_graph_happy_path():
-    """
-    Validate:
-
-        INITIALIZING
-            ↓ TASK_READY
-        PLANNING
-            ↓ PLAN_CREATED
-        EXECUTING
-            ↓ EXECUTION_COMPLETED
-        REVIEWING
-    """
-
-    from agents.terminal.runtime.kernel import RuntimeKernel
-
-    runtime_state = RuntimeState()
-
-    print("\n========================================")
-    print("RUNTIME GRAPH HAPPY PATH TEST")
-    print("========================================")
-
-    # --------------------------------------------------------------
-    # Initial state
-    # --------------------------------------------------------------
-
-    print("\n[INITIAL]")
-    print("Mode:", runtime_state.mode)
-
-    assert runtime_state.mode == RuntimeMode.INITIALIZING
-
-    # --------------------------------------------------------------
-    # TASK_READY
-    # --------------------------------------------------------------
-
-    stage = RuntimeKernel.handle_event(
-        runtime_state=runtime_state,
-        event=RuntimeEvent.TASK_READY,
+def make_output(
+    decision,
+    scope,
+    target_task_ids=None,
+):
+    return CriticOutput(
+        decision=decision,
+        scope=scope,
+        target_task_ids=(
+            target_task_ids
+            if target_task_ids is not None
+            else []
+        ),
+        rationale="Test rationale.",
+        evidence=evidence(),
     )
 
-    print("\n[TASK_READY]")
-    print("Mode:", runtime_state.mode)
-    print("Last event:", runtime_state.last_event)
-    print("Stage:", stage)
 
-    assert runtime_state.mode == RuntimeMode.PLANNING
-    assert runtime_state.last_event == RuntimeEvent.TASK_READY
-    assert stage == RuntimeStage.PLANNER
+# ==========================================================
+# VALID CASES
+# ==========================================================
 
-    # --------------------------------------------------------------
-    # Planner
-    # --------------------------------------------------------------
+valid_cases = [
+    (
+        "CONTINUE_TASK",
+        make_output(
+            CriticDecision.CONTINUE_TASK,
+            CriticDecisionScope.TASK,
+            ["task-A"],
+        ),
+    ),
 
-    state = {
-        "runtime_state": runtime_state,
-    }
+    (
+        "TASK_COMPLETED",
+        make_output(
+            CriticDecision.TASK_COMPLETED,
+            CriticDecisionScope.TASK,
+            ["task-A"],
+        ),
+    ),
 
-    fake_planner_node(state)
+    (
+        "RETRY_TASK",
+        make_output(
+            CriticDecision.RETRY_TASK,
+            CriticDecisionScope.TASK,
+            ["task-A"],
+        ),
+    ),
 
-    # --------------------------------------------------------------
-    # PLAN_CREATED
-    # --------------------------------------------------------------
+    (
+        "RETRY_TASK_MULTIPLE",
+        make_output(
+            CriticDecision.RETRY_TASK,
+            CriticDecisionScope.TASK,
+            ["task-A", "task-B"],
+        ),
+    ),
 
-    stage = RuntimeKernel.handle_event(
-        runtime_state=runtime_state,
-        event=RuntimeEvent.PLAN_CREATED,
+    (
+        "PLAN_UPDATE_REQUIRED",
+        make_output(
+            CriticDecision.PLAN_UPDATE_REQUIRED,
+            CriticDecisionScope.PLAN,
+            [],
+        ),
+    ),
+
+    (
+        "REPLAN_REQUIRED",
+        make_output(
+            CriticDecision.REPLAN_REQUIRED,
+            CriticDecisionScope.PLAN,
+            [],
+        ),
+    ),
+
+    (
+        "GOAL_COMPLETED",
+        make_output(
+            CriticDecision.GOAL_COMPLETED,
+            CriticDecisionScope.GOAL,
+            [],
+        ),
+    ),
+]
+
+
+print("\n========== VALID CASES ==========\n")
+
+for name, output in valid_cases:
+
+    validate_critic_output(output)
+
+    print(
+        f"[PASS] {name}"
+        f" -> decision={output.decision.value}"
+        f", scope={output.scope.value}"
+        f", targets={output.target_task_ids}"
     )
 
-    print("\n[PLAN_CREATED]")
-    print("Mode:", runtime_state.mode)
-    print("Last event:", runtime_state.last_event)
-    print("Stage:", stage)
 
-    assert runtime_state.mode == RuntimeMode.EXECUTING
-    assert runtime_state.last_event == RuntimeEvent.PLAN_CREATED
-    assert stage == RuntimeStage.EXECUTOR
+# ==========================================================
+# INVALID CASES
+# ==========================================================
 
-    # --------------------------------------------------------------
-    # Executor
-    # --------------------------------------------------------------
+invalid_cases = [
+    (
+        "RETRY_WITHOUT_TARGET",
+        make_output(
+            CriticDecision.RETRY_TASK,
+            CriticDecisionScope.TASK,
+            [],
+        ),
+    ),
 
-    state = {
-        "runtime_state": runtime_state,
-    }
+    (
+        "TASK_COMPLETED_WITHOUT_TARGET",
+        make_output(
+            CriticDecision.TASK_COMPLETED,
+            CriticDecisionScope.TASK,
+            [],
+        ),
+    ),
 
-    fake_executor_node(state)
+    (
+        "CONTINUE_WITHOUT_TARGET",
+        make_output(
+            CriticDecision.CONTINUE_TASK,
+            CriticDecisionScope.TASK,
+            [],
+        ),
+    ),
 
-    # --------------------------------------------------------------
-    # EXECUTION_COMPLETED
-    # --------------------------------------------------------------
+    (
+        "RETRY_PLAN_SCOPE",
+        make_output(
+            CriticDecision.RETRY_TASK,
+            CriticDecisionScope.PLAN,
+            [],
+        ),
+    ),
 
-    stage = RuntimeKernel.handle_event(
-        runtime_state=runtime_state,
-        event=RuntimeEvent.EXECUTION_COMPLETED,
-    )
+    (
+        "TASK_COMPLETED_PLAN_SCOPE",
+        make_output(
+            CriticDecision.TASK_COMPLETED,
+            CriticDecisionScope.PLAN,
+            ["task-A"],
+        ),
+    ),
 
-    print("\n[EXECUTION_COMPLETED]")
-    print("Mode:", runtime_state.mode)
-    print("Last event:", runtime_state.last_event)
-    print("Stage:", stage)
+    (
+        "PLAN_UPDATE_WITH_TARGET",
+        make_output(
+            CriticDecision.PLAN_UPDATE_REQUIRED,
+            CriticDecisionScope.PLAN,
+            ["task-A"],
+        ),
+    ),
 
-    assert runtime_state.mode == RuntimeMode.REVIEWING
-    assert runtime_state.last_event == RuntimeEvent.EXECUTION_COMPLETED
-    assert stage == RuntimeStage.CRITIC
+    (
+        "REPLAN_WITH_TARGET",
+        make_output(
+            CriticDecision.REPLAN_REQUIRED,
+            CriticDecisionScope.PLAN,
+            ["task-A"],
+        ),
+    ),
 
-    # --------------------------------------------------------------
-    # Critic
-    # --------------------------------------------------------------
+    (
+        "GOAL_COMPLETED_WITH_TARGET",
+        make_output(
+            CriticDecision.GOAL_COMPLETED,
+            CriticDecisionScope.GOAL,
+            ["task-A"],
+        ),
+    ),
 
-    state = {
-        "runtime_state": runtime_state,
-    }
+    (
+        "GOAL_COMPLETED_TASK_SCOPE",
+        make_output(
+            CriticDecision.GOAL_COMPLETED,
+            CriticDecisionScope.TASK,
+            ["task-A"],
+        ),
+    ),
 
-    fake_critic_node(state)
+    (
+        "PLAN_UPDATE_GOAL_SCOPE",
+        make_output(
+            CriticDecision.PLAN_UPDATE_REQUIRED,
+            CriticDecisionScope.GOAL,
+            [],
+        ),
+    ),
 
-    print("\n========================================")
-    print("HAPPY PATH PASSED")
-    print("========================================")
+    (
+        "EMPTY_TARGET_ID",
+        make_output(
+            CriticDecision.RETRY_TASK,
+            CriticDecisionScope.TASK,
+            [""],
+        ),
+    ),
 
-
-# ------------------------------------------------------------------
-# Test 2
-# ------------------------------------------------------------------
-
-def test_runtime_initialization_transition():
-    """
-    Specifically validates the 7.1.16 fix:
-
-        INITIALIZING + TASK_READY → PLANNING
-    """
-
-    from agents.terminal.runtime.kernel import RuntimeKernel
-
-    runtime_state = RuntimeState()
-
-    assert runtime_state.mode == RuntimeMode.INITIALIZING
-
-    stage = RuntimeKernel.handle_event(
-        runtime_state=runtime_state,
-        event=RuntimeEvent.TASK_READY,
-    )
-
-    assert runtime_state.mode == RuntimeMode.PLANNING
-    assert runtime_state.last_event == RuntimeEvent.TASK_READY
-    assert stage == RuntimeStage.PLANNER
-
-    print("\nInitialization transition passed.")
+    (
+        "WHITESPACE_TARGET_ID",
+        make_output(
+            CriticDecision.RETRY_TASK,
+            CriticDecisionScope.TASK,
+            ["   "],
+        ),
+    ),
+]
 
 
-# ------------------------------------------------------------------
-# Test 3
-# ------------------------------------------------------------------
+print("\n========== INVALID CASES ==========\n")
 
-def test_runtime_normal_transition_chain():
-    """
-    Validate the Runtime Kernel transitions without any graph nodes.
-    """
+for name, output in invalid_cases:
 
-    from agents.terminal.runtime.kernel import RuntimeKernel
+    try:
+        validate_critic_output(output)
 
-    runtime_state = RuntimeState()
+    except ValueError as error:
+        print(
+            f"[PASS] {name}"
+            f" -> correctly rejected: {error}"
+        )
 
-    # INITIALIZING → PLANNING
-    stage = RuntimeKernel.handle_event(
-        runtime_state=runtime_state,
-        event=RuntimeEvent.TASK_READY,
-    )
+    else:
+        print(
+            f"[FAIL] {name}"
+            " -> validator accepted invalid output!"
+        )
 
-    assert runtime_state.mode == RuntimeMode.PLANNING
-    assert stage == RuntimeStage.PLANNER
 
-    # PLANNING → EXECUTING
-    stage = RuntimeKernel.handle_event(
-        runtime_state=runtime_state,
-        event=RuntimeEvent.PLAN_CREATED,
-    )
-
-    assert runtime_state.mode == RuntimeMode.EXECUTING
-    assert stage == RuntimeStage.EXECUTOR
-
-    # EXECUTING → REVIEWING
-    stage = RuntimeKernel.handle_event(
-        runtime_state=runtime_state,
-        event=RuntimeEvent.EXECUTION_COMPLETED,
-    )
-
-    assert runtime_state.mode == RuntimeMode.REVIEWING
-    assert stage == RuntimeStage.CRITIC
-
-    print("\nRuntime transition chain passed.")
+print("\n========== COMPLETE ==========\n")

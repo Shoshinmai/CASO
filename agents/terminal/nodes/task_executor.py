@@ -96,9 +96,9 @@ async def terminal_task_executor_node(state: TerminalState):
 
     executor_output = await call_nvidia(
         prompt,
-        # "openai/gpt-oss-20b",
+        "openai/gpt-oss-20b",
         # "nvidia/nemotron-3.5-lightning-30b-a3b",
-        "nvidia/nemotron-3-ultra-550b-a55b",
+        # "nvidia/nemotron-3-ultra-550b-a55b",
         subagent=True,
         state_model=ExecutorOutput,
     )

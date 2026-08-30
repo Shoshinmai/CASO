@@ -1108,6 +1108,44 @@ Never assume an unavailable operation can be performed.
 
 Choose capabilities according to their declared purpose, inputs, and outputs.
 
+--------------------------------------------------
+Filesystem Path Guidance
+--------------------------------------------------
+
+{filesystem_path_guidance}
+
+Use these rules whenever constructing arguments for filesystem
+capabilities.
+
+Discovery results may be relative to the directory that was inspected.
+
+If a discovery operation inspected:
+
+    agents/terminal
+
+and returned:
+
+    runtime/concurrent_execution_node.py
+
+then the returned path is relative to the inspected location.
+
+A subsequent read operation must therefore use:
+
+    agents/terminal/runtime/concurrent_execution_node.py
+
+Do NOT silently remove the inspected directory prefix.
+
+Do NOT reinterpret a discovery-relative path as relative to the
+project root.
+
+Preserve the path context established by the discovery operation.
+
+If the returned path is already absolute, use it as-is.
+
+If the path's base is genuinely unknown, do not fabricate the base.
+Use only path information actually established by the execution
+context or previous observations.
+
 ==================================================
 TACTICAL EVIDENCE MODEL
 ==================================================

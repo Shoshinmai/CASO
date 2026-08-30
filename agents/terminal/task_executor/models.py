@@ -185,3 +185,13 @@ class ExecutionContext(BaseModel):
     If no decision context exists, this contains an explicit
     "No runtime decision context available." message.
     """
+    
+    filesystem_path_guidance: str
+    """
+    Filesystem path rules for discovery and subsequent file operations.
+
+    Explains how paths returned by discovery capabilities relate to
+    the location that was inspected, so the Executor does not strip
+    the discovered directory prefix when constructing later tool
+    arguments.
+    """

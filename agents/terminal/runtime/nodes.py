@@ -647,12 +647,11 @@ def runtime_critic_result_node(
         )
 
         state["execution_workflow"] = None
-    
+
     else:
 
         raise ValueError(
-            "Unsupported plan-scoped concurrent Critic event: "
-            f"'{event.value}'."
+            "Unsupported plan-scoped concurrent Critic event: " f"'{event.value}'."
         )
 
     # ----------------------------------------------------------
@@ -847,18 +846,29 @@ def _apply_concurrent_critic_decision(
                 "must not contain target_task_ids."
             )
 
+        if event == RuntimeEvent.CONTINUE_TASK:
+
+            state["plan_execution_outcome"] = None
+            state["execution_workflow"] = None
+
+            RuntimeKernel.handle_event(
+                runtime_state=runtime_state,
+                event=RuntimeEvent.CONTINUE_TASK,
+                decision_context=decision_context,
+            )
+
+            return {
+                "runtime_state": runtime_state,
+                "task_plan": task_plan,
+                "plan_execution_outcome": None,
+                "execution_workflow": None,
+                "critic_runtime_event": None,
+            }
+
         if event in (
             RuntimeEvent.PLAN_UPDATE_REQUIRED,
             RuntimeEvent.REPLAN_REQUIRED,
         ):
-
-            # --------------------------------------------------
-            # The current concurrent execution outcome remains
-            # useful as planning evidence until the Planner
-            # consumes it.
-            #
-            # Do not clear it here.
-            # --------------------------------------------------
 
             state["execution_workflow"] = None
 
@@ -871,11 +881,7 @@ def _apply_concurrent_critic_decision(
             return {
                 "runtime_state": runtime_state,
                 "task_plan": task_plan,
-                "plan_execution_outcome": (
-                    state.get(
-                        "plan_execution_outcome",
-                    )
-                ),
+                "plan_execution_outcome": (state.get("plan_execution_outcome")),
                 "execution_workflow": None,
                 "critic_runtime_event": None,
             }

@@ -608,10 +608,23 @@ def runtime_critic_result_node(
     # The Executor will generate a fresh workflow after planning.
     # ----------------------------------------------------------
 
-    if event in (
-        RuntimeEvent.REPLAN_REQUIRED,
+    if event == RuntimeEvent.CONTINUE_TASK:
+
+        # The previous concurrent execution boundary has already
+        # been reviewed. Clear it before starting another execution
+        # cycle so it cannot be mistaken for the new execution result.
+        state["plan_execution_outcome"] = None
+        state["execution_workflow"] = None
+
+    elif event in (
         RuntimeEvent.PLAN_UPDATE_REQUIRED,
+        RuntimeEvent.REPLAN_REQUIRED,
     ):
+
+        # Preserve the PlanExecutionOutcome for the Planner.
+        #
+        # The Planner may need the execution evidence when deciding
+        # how to update or replace the rolling TaskPlan.
         state["execution_workflow"] = None
 
     elif event == RuntimeEvent.RETRY_TASK:
@@ -634,6 +647,13 @@ def runtime_critic_result_node(
         )
 
         state["execution_workflow"] = None
+    
+    else:
+
+        raise ValueError(
+            "Unsupported plan-scoped concurrent Critic event: "
+            f"'{event.value}'."
+        )
 
     # ----------------------------------------------------------
     # Normal Runtime decision

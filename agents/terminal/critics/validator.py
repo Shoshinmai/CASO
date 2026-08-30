@@ -51,13 +51,36 @@ def validate_critic_output(
     scope = critic_output.scope
     targets = critic_output.target_task_ids
 
+    # ----------------------------------------------------------
+    # TASK-SCOPED DECISIONS
+    # ----------------------------------------------------------
+    #
+    # These decisions operate on explicitly identified tasks.
+    # ----------------------------------------------------------
+
     task_scoped_decisions = {
-        CriticDecision.CONTINUE_TASK,
         CriticDecision.TASK_COMPLETED,
         CriticDecision.RETRY_TASK,
     }
 
+    # ----------------------------------------------------------
+    # PLAN-SCOPED DECISIONS
+    # ----------------------------------------------------------
+    #
+    # CONTINUE_TASK is allowed at PLAN scope for concurrent
+    # execution.
+    #
+    # It means:
+    #
+    #     continue the rolling plan
+    #
+    # rather than:
+    #
+    #     continue one explicitly targeted task.
+    # ----------------------------------------------------------
+
     plan_scoped_decisions = {
+        CriticDecision.CONTINUE_TASK,
         CriticDecision.PLAN_UPDATE_REQUIRED,
         CriticDecision.REPLAN_REQUIRED,
     }
@@ -85,6 +108,7 @@ def validate_critic_output(
             )
 
         for task_id in targets:
+
             if not task_id.strip():
                 raise ValueError(
                     "Critic target_task_ids cannot contain "

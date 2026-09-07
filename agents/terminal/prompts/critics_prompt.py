@@ -438,15 +438,17 @@ than assuming there is only one active worker.
 
 Scope:
 
-    TASK
-
-or
-
     PLAN
 
-If TASK scope is used, target_task_ids MUST identify the task(s).
+target_task_ids MUST be empty.
 
-If PLAN scope is used, target_task_ids MUST be empty.
+For concurrent execution, CONTINUE_TASK always means that
+the rolling Task Plan should continue into its next execution
+wave.
+
+Do NOT use TASK scope for CONTINUE_TASK.
+
+Do NOT provide target_task_ids for CONTINUE_TASK.
 
 ------------------------------------------------------------
 TASK_COMPLETED
@@ -552,7 +554,6 @@ TASK-SCOPED
 
 The following decisions are TASK-scoped:
 
-- CONTINUE_TASK
 - TASK_COMPLETED
 - RETRY_TASK
 
@@ -568,6 +569,7 @@ PLAN-SCOPED
 
 The following decisions are PLAN-scoped:
 
+- CONTINUE_TASK
 - PLAN_UPDATE_REQUIRED
 - REPLAN_REQUIRED
 
@@ -618,15 +620,26 @@ Use this reasoning order.
       scope = TASK
       target_task_ids = [relevant completed task IDs]
 
-3. Is additional execution required and the current task/plan approach
-   remains valid?
+3. Is additional execution required and the current rolling
+   Task Plan and execution strategy remain valid?
 
     → CONTINUE_TASK
 
-    Use TASK scope with explicit targets when only specific tasks
-    require continuation.
+    scope = PLAN
 
-    Use PLAN scope only when continuation is clearly plan-level.
+    target_task_ids = []
+
+    In concurrent execution, CONTINUE_TASK means that the
+    rolling Task Plan should proceed to its next execution wave.
+
+    Do NOT target individual tasks with CONTINUE_TASK.
+
+    If only specific failed tasks should be executed again,
+    use RETRY_TASK instead:
+
+        scope = TASK
+
+        target_task_ids = [affected task IDs]
 
 4. Did one or more tasks fail in a recoverable way while their
    objectives and execution approach remain valid?

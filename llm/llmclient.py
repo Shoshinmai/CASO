@@ -451,14 +451,21 @@ async def call_nvidia(
         )
 
         fallback_local_model = (
-            # "openai/gpt-oss-20b"
-            "freehuntx/qwen3-coder:8b"
+            "openai/gpt-oss-20b"
+            # "freehuntx/qwen3-coder:8b"
         )
 
-        return await call_ollama(
+        return await call_nvidia(
             prompt=prompt,
             model=fallback_local_model,
             subagent=subagent,
             state_model=state_model,
             tool=tool,
         )
+        # return await call_ollama(
+        #     prompt=prompt,
+        #     model=fallback_local_model,
+        #     subagent=subagent,
+        #     state_model=state_model,
+        #     tool=tool,
+        # )

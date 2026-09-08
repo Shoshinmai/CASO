@@ -424,6 +424,7 @@ class TaskWorker:
                     status=(
                         TaskExecutionStatus.COMPLETED
                     ),
+                    execution_attempt_id=attempt_id,
                     workflow_id=(
                         workflow.workflow_id
                     ),
@@ -455,6 +456,7 @@ class TaskWorker:
                     status=(
                         TaskExecutionStatus.CANCELLED
                     ),
+                    execution_attempt_id=attempt_id,
                     workflow_id=(
                         workflow.workflow_id
                     ),
@@ -490,6 +492,7 @@ class TaskWorker:
                 plan_id=task_execution.plan_id,
                 task_id=task_execution.task_id,
                 status=TaskExecutionStatus.FAILED,
+                execution_attempt_id=attempt_id,
                 workflow_id=(
                     workflow.workflow_id
                 ),
@@ -622,6 +625,7 @@ class TaskWorker:
                 status=(
                     TaskExecutionStatus.FAILED
                 ),
+                execution_attempt_id=attempt_id,
                 workflow_id=(
                     workflow.workflow_id
                     if workflow is not None

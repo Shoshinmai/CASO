@@ -109,6 +109,15 @@ class TaskExecutionResult(BaseModel):
         ),
     )
 
+    execution_attempt_id: str | None = Field(
+        default=None,
+        description=(
+            "ExecutionMemory attempt that produced this "
+            "task result. This identifies the exact task-local "
+            "attempt for concurrent reconciliation."
+        ),
+    )
+
     plan_id: str = Field(
         min_length=1,
         description="TaskPlan associated with the execution.",

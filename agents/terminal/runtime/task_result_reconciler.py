@@ -324,20 +324,30 @@ class TaskResultReconciler:
         execution_memory,
     ) -> None:
         """
-        Associate an artifact with the execution attempt that
-        produced the task result.
+        Associate an artifact with the exact execution attempt
+        that produced the task result.
 
-        D.7.2 keeps ExecutionMemory task-local, so the exact
-        attempt association is only possible when the worker
-        exposes its attempt identity in the returned result
-        metadata.
+        Concurrent workers must never rely on
+        ExecutionMemoryManager.current_attempt() here because
+        multiple workers may complete in arbitrary order.
 
-        The current D.7.2 TaskExecutionResult does not yet carry
-        that attempt ID explicitly.
-
-        Therefore this helper intentionally performs no guessed
-        association. D.7.4 will add the explicit result-bound
-        execution-attempt identity before wiring this association.
+        The TaskExecutionResult therefore carries the explicit
+        execution_attempt_id created by the TaskWorker.
         """
 
-        return
+        attempt_id = (
+            result.execution_attempt_id
+        )
+
+        if not attempt_id:
+            raise ValueError(
+                "Cannot associate artifact with ExecutionMemory: "
+                f"task '{result.task_id}' returned an artifact "
+                "without an execution_attempt_id."
+            )
+
+        ExecutionMemoryManager.add_artifact(
+            execution_memory=execution_memory,
+            attempt_id=attempt_id,
+            artifact_id=artifact_id,
+        )

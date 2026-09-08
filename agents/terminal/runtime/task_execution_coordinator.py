@@ -126,11 +126,9 @@ class TaskExecutionCoordinator:
             # IN_PROGRESS before worker execution begins.
             # --------------------------------------------------
 
-            execution_wave = (
-                TaskPlanManager.start_ready_tasks(
-                    plan=plan,
-                    limit=len(ready_tasks),
-                )
+            execution_wave = TaskPlanManager.start_ready_tasks(
+                plan=plan,
+                limit=len(ready_tasks),
             )
 
             if not execution_wave:
@@ -163,6 +161,7 @@ class TaskExecutionCoordinator:
             TaskResultReconciler.reconcile(
                 plan=plan,
                 results=results,
+                state=state,
             )
 
             # --------------------------------------------------

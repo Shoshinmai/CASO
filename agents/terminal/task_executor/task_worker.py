@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from agents.terminal.memory.execution_manager import (
+    ExecutionMemoryManager,
+)
 from agents.terminal.prompts.executor_prompt import (
     TERMINAL_EXECUTOR_PROMPT,
 )
@@ -41,6 +44,7 @@ class TaskWorker:
     - workflow generation
     - workflow execution
     - task-local result processing
+    - task-local ExecutionMemory lifecycle
     - task-local RuntimeProcessingResult collection
 
     The worker does NOT:
@@ -50,9 +54,6 @@ class TaskWorker:
     - release newly ready tasks
     - schedule other workers
     - mutate central runtime memory
-
-    Those responsibilities belong to the concurrent
-    execution coordinator/reconciliation layer.
     """
 
     def __init__(
@@ -77,13 +78,11 @@ class TaskWorker:
         """
         Execute one explicitly assigned task.
 
-        Every successful tool execution is passed through the
-        Runtime Processing Pipeline before the task result is
-        returned to the concurrent coordinator.
+        The task receives one task-local ExecutionMemory attempt.
+        Every workflow step is processed through the Runtime
+        Processing Pipeline.
 
-        Processing remains task-local.
-
-        No central TaskPlan or central runtime memory is mutated.
+        The worker does not mutate central runtime state.
         """
 
         workflow: ExecutionWorkflow | None = None
@@ -91,6 +90,8 @@ class TaskWorker:
         tool_results: list[Any] = []
 
         processing_results = []
+
+        attempt_id: str | None = None
 
         try:
 
@@ -158,13 +159,70 @@ class TaskWorker:
             print(
                 workflow.model_dump()
             )
-            for i, step in enumerate(getattr(executor_output.workflow, "steps", [])):
+
+            for i, step in enumerate(
+                workflow.steps
+            ):
+
                 print(
-                    f"\n[STEP-{i+1}] --> {step.description} : (TOOL -> {step.capability} | ARGS -> {step.arguments} | STATUS -> {step.status})"
+                    f"\n[STEP-{i + 1}] --> "
+                    f"{step.description} : "
+                    f"(TOOL -> {step.capability} | "
+                    f"ARGS -> {step.arguments} | "
+                    f"STATUS -> {step.status})"
                 )
 
             # ==================================================
-            # 5. Execute workflow until terminal
+            # 5. Start task execution-memory attempt
+            # ==================================================
+            #
+            # One TaskWorker execution corresponds to one
+            # ExecutionAttempt.
+            #
+            # The workflow may contain multiple capability steps,
+            # but they all belong to this one task execution
+            # attempt.
+            # ==================================================
+
+            first_step = (
+                workflow.steps[0]
+            )
+
+            attempt = ExecutionMemoryManager.start_attempt(
+                execution_memory=state[
+                    "execution_memory"
+                ],
+                capability=first_step.capability,
+                strategy=(
+                    workflow.execution_strategy
+                ),
+                arguments=first_step.arguments,
+            )
+
+            attempt_id = attempt.attempt_id
+
+            task_execution.active_attempt_id = (
+                attempt_id
+            )
+
+            print(
+                "\n========== EXECUTION MEMORY =========="
+            )
+
+            print(
+                f"TASK ID: {task.task_id}"
+            )
+
+            print(
+                f"ATTEMPT ID: {attempt_id}"
+            )
+
+            print(
+                "STATUS: running"
+            )
+
+            # ==================================================
+            # 6. Execute workflow until terminal
             # ==================================================
 
             while workflow.status.value not in (
@@ -180,18 +238,19 @@ class TaskWorker:
                 )
 
                 # --------------------------------------------------
-                # Update local workflow first.
+                # Update local workflow.
                 # --------------------------------------------------
 
                 workflow = execution_result[
                     "workflow"
                 ]
 
-                task_execution.workflow = workflow
+                task_execution.workflow = (
+                    workflow
+                )
 
                 # --------------------------------------------------
-                # Capture the exact result metadata supplied
-                # by WorkflowRuntime.
+                # Capture execution-step metadata.
                 # --------------------------------------------------
 
                 tool_result = execution_result.get(
@@ -207,8 +266,7 @@ class TaskWorker:
                 )
 
                 # --------------------------------------------------
-                # A terminal state with no tool result can occur
-                # when the workflow has already completed.
+                # Process the actual tool result.
                 # --------------------------------------------------
 
                 if tool_result is not None:
@@ -220,31 +278,10 @@ class TaskWorker:
                     if not capability:
 
                         raise ValueError(
-                            "WorkflowRuntime returned a tool result "
-                            "without the executing capability."
+                            "WorkflowRuntime returned a tool "
+                            "result without the executing "
+                            "capability."
                         )
-
-                    # ==================================================
-                    # 6. Runtime Processing Pipeline
-                    # ==================================================
-                    #
-                    # Process this task's tool result while this
-                    # worker still owns an isolated state snapshot.
-                    #
-                    # The processor:
-                    #
-                    #   raw result
-                    #       ↓
-                    #   normalization
-                    #       ↓
-                    #   artifact decision
-                    #       ↓
-                    #   observation formatting
-                    #       ↓
-                    #   memory proposal
-                    #
-                    # It does NOT mutate central state.
-                    # ==================================================
 
                     processed_result = (
                         await process_tool_result(
@@ -287,7 +324,7 @@ class TaskWorker:
                     break
 
             # ==================================================
-            # 7. Build common task-local result payload
+            # 7. Build task-local result payload
             # ==================================================
 
             task_execution.result = {
@@ -299,7 +336,77 @@ class TaskWorker:
             }
 
             # ==================================================
-            # 8. COMPLETED
+            # 8. Finalize ExecutionMemory attempt
+            # ==================================================
+            #
+            # A terminal semantic result is required by
+            # ExecutionMemoryManager.finish_attempt().
+            #
+            # In normal execution, every successful/failed
+            # capability invocation produces at least one
+            # RuntimeProcessingResult.
+            # ==================================================
+
+            if (
+                attempt_id is not None
+                and processing_results
+            ):
+
+                final_processing_result = (
+                    processing_results[-1]
+                )
+
+                final_execution = (
+                    final_processing_result
+                    .normalized_result
+                    .execution
+                )
+
+                ExecutionMemoryManager.finish_attempt(
+                    execution_memory=state[
+                        "execution_memory"
+                    ],
+                    attempt_id=attempt_id,
+                    runtime_result=(
+                        final_processing_result
+                    ),
+                    success=(
+                        workflow.status.value
+                        == "completed"
+                        and final_execution.success
+                    ),
+                    error=(
+                        final_execution.stderr
+                        or None
+                    ),
+                )
+
+                print(
+                    "\n========== EXECUTION MEMORY =========="
+                )
+
+                print(
+                    f"TASK ID: {task.task_id}"
+                )
+
+                print(
+                    f"ATTEMPT ID: {attempt_id}"
+                )
+
+                print(
+                    "STATUS: finalized"
+                )
+
+            # ==================================================
+            # 9. Clear active attempt pointer
+            # ==================================================
+
+            task_execution.active_attempt_id = (
+                None
+            )
+
+            # ==================================================
+            # 10. COMPLETED
             # ==================================================
 
             if workflow.status.value == "completed":
@@ -317,14 +424,20 @@ class TaskWorker:
                     status=(
                         TaskExecutionStatus.COMPLETED
                     ),
-                    workflow_id=workflow.workflow_id,
+                    workflow_id=(
+                        workflow.workflow_id
+                    ),
                     result=task_execution.result,
-                    metadata=task_execution.metadata,
-                    processing_results=processing_results,
+                    metadata=(
+                        task_execution.metadata
+                    ),
+                    processing_results=(
+                        processing_results
+                    ),
                 )
 
             # ==================================================
-            # 9. CANCELLED
+            # 11. CANCELLED
             # ==================================================
 
             if workflow.status.value == "cancelled":
@@ -342,17 +455,23 @@ class TaskWorker:
                     status=(
                         TaskExecutionStatus.CANCELLED
                     ),
-                    workflow_id=workflow.workflow_id,
+                    workflow_id=(
+                        workflow.workflow_id
+                    ),
                     result=task_execution.result,
                     error=(
                         "Task execution was cancelled."
                     ),
-                    metadata=task_execution.metadata,
-                    processing_results=processing_results,
+                    metadata=(
+                        task_execution.metadata
+                    ),
+                    processing_results=(
+                        processing_results
+                    ),
                 )
 
             # ==================================================
-            # 10. FAILED WORKFLOW
+            # 12. FAILED WORKFLOW
             # ==================================================
 
             task_execution.status = (
@@ -371,11 +490,19 @@ class TaskWorker:
                 plan_id=task_execution.plan_id,
                 task_id=task_execution.task_id,
                 status=TaskExecutionStatus.FAILED,
-                workflow_id=workflow.workflow_id,
+                workflow_id=(
+                    workflow.workflow_id
+                ),
                 result=task_execution.result,
-                error=task_execution.error,
-                metadata=task_execution.metadata,
-                processing_results=processing_results,
+                error=(
+                    task_execution.error
+                ),
+                metadata=(
+                    task_execution.metadata
+                ),
+                processing_results=(
+                    processing_results
+                ),
             )
 
         # ======================================================
@@ -383,6 +510,45 @@ class TaskWorker:
         # ======================================================
 
         except asyncio.CancelledError:
+
+            # --------------------------------------------------
+            # If cancellation occurs after the attempt started
+            # and we already have a processed result, finalize
+            # the attempt as failed/cancelled through the
+            # execution-memory lifecycle.
+            #
+            # We deliberately do not fabricate a
+            # RuntimeProcessingResult when none exists.
+            # --------------------------------------------------
+
+            if (
+                attempt_id is not None
+                and processing_results
+            ):
+
+                try:
+
+                    ExecutionMemoryManager.finish_attempt(
+                        execution_memory=state[
+                            "execution_memory"
+                        ],
+                        attempt_id=attempt_id,
+                        runtime_result=(
+                            processing_results[-1]
+                        ),
+                        success=False,
+                        error=(
+                            "Task execution was cancelled."
+                        ),
+                    )
+
+                except ValueError:
+                    # Preserve the original cancellation.
+                    pass
+
+            task_execution.active_attempt_id = (
+                None
+            )
 
             task_execution.status = (
                 TaskExecutionStatus.CANCELLED
@@ -399,6 +565,37 @@ class TaskWorker:
         # ======================================================
 
         except Exception as error:
+
+            # --------------------------------------------------
+            # Attempt lifecycle
+            # --------------------------------------------------
+
+            if (
+                attempt_id is not None
+                and processing_results
+            ):
+
+                try:
+
+                    ExecutionMemoryManager.finish_attempt(
+                        execution_memory=state[
+                            "execution_memory"
+                        ],
+                        attempt_id=attempt_id,
+                        runtime_result=(
+                            processing_results[-1]
+                        ),
+                        success=False,
+                        error=str(error),
+                    )
+
+                except ValueError:
+                    # Do not mask the original worker error.
+                    pass
+
+            task_execution.active_attempt_id = (
+                None
+            )
 
             task_execution.status = (
                 TaskExecutionStatus.FAILED
@@ -422,14 +619,22 @@ class TaskWorker:
                 ),
                 plan_id=task_execution.plan_id,
                 task_id=task_execution.task_id,
-                status=TaskExecutionStatus.FAILED,
+                status=(
+                    TaskExecutionStatus.FAILED
+                ),
                 workflow_id=(
                     workflow.workflow_id
                     if workflow is not None
                     else None
                 ),
-                result=task_execution.result,
+                result=(
+                    task_execution.result
+                ),
                 error=str(error),
-                metadata=task_execution.metadata,
-                processing_results=processing_results,
+                metadata=(
+                    task_execution.metadata
+                ),
+                processing_results=(
+                    processing_results
+                ),
             )

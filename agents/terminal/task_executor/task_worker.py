@@ -41,9 +41,7 @@ class TaskWorker:
     - workflow generation
     - workflow execution
     - task-local result processing
-    - task-local execution-memory inputs
-    - task-local artifact decisions
-    - task-local memory-update proposals
+    - task-local RuntimeProcessingResult collection
 
     The worker does NOT:
     - select tasks
@@ -79,13 +77,13 @@ class TaskWorker:
         """
         Execute one explicitly assigned task.
 
-        Each workflow step is passed through the Runtime
-        Processing Pipeline immediately after tool execution.
+        Every successful tool execution is passed through the
+        Runtime Processing Pipeline before the task result is
+        returned to the concurrent coordinator.
 
-        Processing remains task-local and produces immutable-style
-        RuntimeProcessingResult objects.
+        Processing remains task-local.
 
-        No central TaskPlan or central runtime memory is mutated here.
+        No central TaskPlan or central runtime memory is mutated.
         """
 
         workflow: ExecutionWorkflow | None = None
@@ -144,9 +142,11 @@ class TaskWorker:
             print(
                 "\n========== TASK WORKER =========="
             )
+
             print(
                 f"TASK ID: {task.task_id}"
             )
+
             print(
                 f"OBJECTIVE: {task.objective}"
             )
@@ -154,9 +154,14 @@ class TaskWorker:
             print(
                 "\n========== WORKFLOW =========="
             )
+
             print(
                 workflow.model_dump()
             )
+            for i, step in enumerate(getattr(executor_output.workflow, "steps", [])):
+                print(
+                    f"\n[STEP-{i+1}] --> {step.description} : (TOOL -> {step.capability} | ARGS -> {step.arguments} | STATUS -> {step.status})"
+                )
 
             # ==================================================
             # 5. Execute workflow until terminal
@@ -168,46 +173,6 @@ class TaskWorker:
                 "cancelled",
             ):
 
-                # --------------------------------------------------
-                # Capture the authoritative current execution step
-                # BEFORE WorkflowRuntime advances it.
-                # --------------------------------------------------
-
-                current_step = (
-                    next(
-                        (
-                            step
-                            for step in workflow.steps
-                            if step.status.value == "in_progress"
-                        ),
-                        None,
-                    )
-                )
-
-                if current_step is None:
-
-                    current_step = (
-                        next(
-                            (
-                                step
-                                for step in workflow.steps
-                                if step.status.value == "pending"
-                            ),
-                            None,
-                        )
-                    )
-
-                if current_step is None:
-
-                    raise ValueError(
-                        "Workflow has no executable current step "
-                        "while it is not terminal."
-                    )
-
-                # --------------------------------------------------
-                # Execute the actual capability.
-                # --------------------------------------------------
-
                 execution_result = (
                     await self.workflow_runtime.execute_next_step(
                         workflow,
@@ -215,12 +180,36 @@ class TaskWorker:
                 )
 
                 # --------------------------------------------------
-                # Capture raw tool result.
+                # Update local workflow first.
+                # --------------------------------------------------
+
+                workflow = execution_result[
+                    "workflow"
+                ]
+
+                task_execution.workflow = workflow
+
+                # --------------------------------------------------
+                # Capture the exact result metadata supplied
+                # by WorkflowRuntime.
                 # --------------------------------------------------
 
                 tool_result = execution_result.get(
                     "tool_result"
                 )
+
+                step_id = execution_result.get(
+                    "step_id"
+                )
+
+                capability = execution_result.get(
+                    "capability"
+                )
+
+                # --------------------------------------------------
+                # A terminal state with no tool result can occur
+                # when the workflow has already completed.
+                # --------------------------------------------------
 
                 if tool_result is not None:
 
@@ -228,27 +217,39 @@ class TaskWorker:
                         tool_result
                     )
 
+                    if not capability:
+
+                        raise ValueError(
+                            "WorkflowRuntime returned a tool result "
+                            "without the executing capability."
+                        )
+
                     # ==================================================
                     # 6. Runtime Processing Pipeline
                     # ==================================================
                     #
-                    # The tool result is processed INSIDE the worker,
-                    # while the task-local state snapshot is still
-                    # isolated from every other worker.
+                    # Process this task's tool result while this
+                    # worker still owns an isolated state snapshot.
                     #
-                    # This produces:
+                    # The processor:
                     #
-                    #   normalized_result
-                    #   artifact_decision
-                    #   memory_update
+                    #   raw result
+                    #       ↓
+                    #   normalization
+                    #       ↓
+                    #   artifact decision
+                    #       ↓
+                    #   observation formatting
+                    #       ↓
+                    #   memory proposal
                     #
-                    # without mutating central state.
+                    # It does NOT mutate central state.
                     # ==================================================
 
-                    processing_result = (
+                    processed_result = (
                         await process_tool_result(
                             state=state,
-                            tool_name=current_step.capability,
+                            tool_name=capability,
                             raw_result=tool_result,
                             attempt=(
                                 len(processing_results) + 1
@@ -257,18 +258,28 @@ class TaskWorker:
                     )
 
                     processing_results.append(
-                        processing_result
+                        processed_result
                     )
 
-                # --------------------------------------------------
-                # Update local workflow.
-                # --------------------------------------------------
+                    print(
+                        "\n========== TASK RESULT PROCESSED =========="
+                    )
 
-                workflow = execution_result[
-                    "workflow"
-                ]
+                    print(
+                        f"TASK ID: {task.task_id}"
+                    )
 
-                task_execution.workflow = workflow
+                    print(
+                        f"STEP ID: {step_id}"
+                    )
+
+                    print(
+                        f"CAPABILITY: {capability}"
+                    )
+
+                    print(
+                        processed_result
+                    )
 
                 if execution_result.get(
                     "completed"
@@ -298,10 +309,14 @@ class TaskWorker:
                 )
 
                 return TaskExecutionResult(
-                    execution_id=task_execution.execution_id,
+                    execution_id=(
+                        task_execution.execution_id
+                    ),
                     plan_id=task_execution.plan_id,
                     task_id=task_execution.task_id,
-                    status=TaskExecutionStatus.COMPLETED,
+                    status=(
+                        TaskExecutionStatus.COMPLETED
+                    ),
                     workflow_id=workflow.workflow_id,
                     result=task_execution.result,
                     metadata=task_execution.metadata,
@@ -319,13 +334,19 @@ class TaskWorker:
                 )
 
                 return TaskExecutionResult(
-                    execution_id=task_execution.execution_id,
+                    execution_id=(
+                        task_execution.execution_id
+                    ),
                     plan_id=task_execution.plan_id,
                     task_id=task_execution.task_id,
-                    status=TaskExecutionStatus.CANCELLED,
+                    status=(
+                        TaskExecutionStatus.CANCELLED
+                    ),
                     workflow_id=workflow.workflow_id,
                     result=task_execution.result,
-                    error="Task execution was cancelled.",
+                    error=(
+                        "Task execution was cancelled."
+                    ),
                     metadata=task_execution.metadata,
                     processing_results=processing_results,
                 )
@@ -339,12 +360,14 @@ class TaskWorker:
             )
 
             task_execution.error = (
-                f"Workflow ended with status: "
+                "Workflow ended with status: "
                 f"{workflow.status.value}"
             )
 
             return TaskExecutionResult(
-                execution_id=task_execution.execution_id,
+                execution_id=(
+                    task_execution.execution_id
+                ),
                 plan_id=task_execution.plan_id,
                 task_id=task_execution.task_id,
                 status=TaskExecutionStatus.FAILED,
@@ -394,7 +417,9 @@ class TaskWorker:
             }
 
             return TaskExecutionResult(
-                execution_id=task_execution.execution_id,
+                execution_id=(
+                    task_execution.execution_id
+                ),
                 plan_id=task_execution.plan_id,
                 task_id=task_execution.task_id,
                 status=TaskExecutionStatus.FAILED,

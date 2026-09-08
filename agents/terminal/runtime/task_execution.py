@@ -6,8 +6,12 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-from agents.terminal.result_processing.models import RuntimeProcessingResult
-from agents.terminal.task_executor.models import ExecutionWorkflow
+from agents.terminal.result_processing.models import (
+    RuntimeProcessingResult,
+)
+from agents.terminal.task_executor.models import (
+    ExecutionWorkflow,
+)
 
 
 class TaskExecutionStatus(StrEnum):
@@ -29,7 +33,9 @@ class TaskExecutionContext(BaseModel):
 
     execution_id: str = Field(
         default_factory=lambda: str(uuid4()),
-        description="Unique identifier for this task execution instance.",
+        description=(
+            "Unique identifier for this task execution instance."
+        ),
     )
 
     plan_id: str = Field(
@@ -44,46 +50,63 @@ class TaskExecutionContext(BaseModel):
 
     status: TaskExecutionStatus = Field(
         default=TaskExecutionStatus.CREATED,
-        description="Runtime-local execution lifecycle state.",
+        description=(
+            "Runtime-local execution lifecycle state."
+        ),
     )
 
     workflow: ExecutionWorkflow | None = Field(
         default=None,
-        description="Workflow associated with this task execution.",
+        description=(
+            "Workflow associated with this task execution."
+        ),
     )
 
     active_attempt_id: str | None = Field(
         default=None,
-        description="Currently active execution-memory attempt for this task.",
+        description=(
+            "Currently active execution-memory attempt "
+            "for this task."
+        ),
     )
 
     result: dict[str, Any] | None = Field(
         default=None,
-        description="Task-local terminal execution result.",
+        description=(
+            "Task-local terminal execution result."
+        ),
     )
 
     error: str | None = Field(
         default=None,
-        description="Task-local execution failure information.",
+        description=(
+            "Task-local execution failure information."
+        ),
     )
 
     metadata: dict[str, Any] = Field(
         default_factory=dict,
-        description="Additional runtime metadata for this execution.",
+        description=(
+            "Additional runtime metadata for this execution."
+        ),
     )
 
 
 class TaskExecutionResult(BaseModel):
     """
-    Immutable-style terminal result returned by AsyncTaskRunner.
+    Terminal result returned by AsyncTaskRunner.
 
-    This object communicates what happened during one task execution.
-    It does not mutate TaskPlan or scheduler state itself.
+    This object communicates everything produced by one task
+    execution.
+
+    It does not mutate TaskPlan or central scheduler state.
     """
 
     execution_id: str = Field(
         min_length=1,
-        description="Task execution context that produced this result.",
+        description=(
+            "Task execution context that produced this result."
+        ),
     )
 
     plan_id: str = Field(
@@ -102,28 +125,36 @@ class TaskExecutionResult(BaseModel):
 
     workflow_id: str | None = Field(
         default=None,
-        description="Workflow used during execution, if one was created.",
+        description=(
+            "Workflow used during execution, if one was created."
+        ),
     )
 
     result: dict[str, Any] | None = Field(
         default=None,
-        description="Structured successful execution result.",
+        description=(
+            "Structured successful execution result."
+        ),
     )
 
     error: str | None = Field(
         default=None,
-        description="Structured or textual failure information.",
+        description=(
+            "Structured or textual failure information."
+        ),
     )
 
     metadata: dict[str, Any] = Field(
         default_factory=dict,
-        description="Additional execution metadata.",
+        description=(
+            "Additional execution metadata."
+        ),
     )
 
     processing_results: list[RuntimeProcessingResult] = Field(
         default_factory=list,
         description=(
-            "Runtime Processing Pipeline results produced by "
-            "this task's workflow steps."
+            "Runtime Processing Pipeline results generated "
+            "by the task's workflow steps."
         ),
     )

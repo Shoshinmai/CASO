@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from agents.terminal.result_processing.models import RuntimeProcessingResult
 from agents.terminal.task_executor.models import ExecutionWorkflow
 
 
@@ -117,4 +118,12 @@ class TaskExecutionResult(BaseModel):
     metadata: dict[str, Any] = Field(
         default_factory=dict,
         description="Additional execution metadata.",
+    )
+
+    processing_results: list[RuntimeProcessingResult] = Field(
+        default_factory=list,
+        description=(
+            "Runtime Processing Pipeline results produced by "
+            "this task's workflow steps."
+        ),
     )

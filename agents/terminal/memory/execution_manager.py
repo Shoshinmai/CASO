@@ -70,6 +70,7 @@ class ExecutionMemoryManager:
         """
 
         for attempt in execution_memory.attempts:
+
             if attempt.attempt_id == attempt_id:
                 return attempt
 
@@ -82,12 +83,20 @@ class ExecutionMemoryManager:
         *,
         execution_memory: ExecutionMemory,
         attempt_id: str,
-        runtime_result: RuntimeProcessingResult,
+        runtime_result: RuntimeProcessingResult | None,
         success: bool,
         error: str | None = None,
     ) -> None:
         """
         Finalize one RUNNING execution attempt.
+
+        A RuntimeProcessingResult is normally available after at
+        least one tool result has been processed.
+
+        A task may also fail or be cancelled before the first
+        processed tool result exists. In that case the attempt
+        can still be finalized using the explicit success/error
+        lifecycle information.
         """
 
         attempt = ExecutionMemoryManager._find_attempt(
@@ -106,11 +115,9 @@ class ExecutionMemoryManager:
                 f"status is '{attempt.status.value}'."
             )
 
-        execution = (
-            runtime_result
-            .normalized_result
-            .execution
-        )
+        # ------------------------------------------------------
+        # Final status
+        # ------------------------------------------------------
 
         attempt.status = (
             AttemptStatus.SUCCEEDED
@@ -122,17 +129,50 @@ class ExecutionMemoryManager:
             timezone.utc
         )
 
-        attempt.outcome = execution
+        # ------------------------------------------------------
+        # Result-backed completion
+        # ------------------------------------------------------
 
-        attempt.progress_made = bool(
-            execution.progress_made
-        )
+        if runtime_result is not None:
 
-        attempt.error = (
+            execution = (
+                runtime_result
+                .normalized_result
+                .execution
+            )
+
+            attempt.outcome = execution
+
+            attempt.progress_made = bool(
+                execution.progress_made
+            )
+
+            if error is not None:
+                attempt.error = error
+            else:
+                attempt.error = (
+                    execution.stderr
+                    or None
+                )
+
+            return
+
+        # ------------------------------------------------------
+        # Failure/cancellation before result processing
+        # ------------------------------------------------------
+
+        attempt.outcome = (
             error
             if error is not None
-            else execution.stderr or None
+            else (
+                "Execution terminated before a "
+                "RuntimeProcessingResult was produced."
+            )
         )
+
+        attempt.progress_made = False
+
+        attempt.error = error
 
     @staticmethod
     def add_artifact(
@@ -154,7 +194,7 @@ class ExecutionMemoryManager:
             attempt.artifact_ids.append(
                 artifact_id
             )
-    
+
     @staticmethod
     def merge_completed_attempt(
         *,
@@ -164,7 +204,7 @@ class ExecutionMemoryManager:
         """
         Merge one completed task-local execution attempt into
         authoritative ExecutionMemory.
-
+        
         This operation is used by the concurrent result
         reconciliation boundary.
 
@@ -188,7 +228,7 @@ class ExecutionMemoryManager:
             )
 
         # ------------------------------------------------------
-        # Concurrent reconciliation must be idempotent.
+        # Idempotent merge.
         # ------------------------------------------------------
 
         for existing in execution_memory.attempts:
@@ -196,10 +236,8 @@ class ExecutionMemoryManager:
             if existing.attempt_id == attempt.attempt_id:
                 return
 
-        # ------------------------------------------------------
-        # Preserve the completed worker-produced attempt.
-        # ------------------------------------------------------
-
         execution_memory.attempts.append(
-            attempt.model_copy(deep=True)
+            attempt.model_copy(
+                deep=True
+            )
         )

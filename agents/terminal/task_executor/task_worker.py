@@ -116,7 +116,8 @@ class TaskWorker:
 
             executor_output: ExecutorOutput = await call_nvidia(
                 prompt,
-                "nvidia/nemotron-3.5-lightning-30b-a3b",
+                # "nvidia/nemotron-3.5-lightning-30b-a3b",
+                "openai/gpt-oss-20b",
                 subagent=True,
                 state_model=ExecutorOutput,
             )
@@ -278,20 +279,38 @@ class TaskWorker:
             # RuntimeProcessingResult.
             # ==================================================
 
-            if attempt_id is not None and processing_results:
+            if attempt_id is not None:
 
-                final_processing_result = processing_results[-1]
+                final_processing_result = (
+                    processing_results[-1] if processing_results else None
+                )
 
-                final_execution = final_processing_result.normalized_result.execution
+                final_execution = (
+                    final_processing_result.normalized_result.execution
+                    if final_processing_result is not None
+                    else None
+                )
 
                 ExecutionMemoryManager.finish_attempt(
                     execution_memory=state["execution_memory"],
                     attempt_id=attempt_id,
-                    runtime_result=(final_processing_result),
+                    runtime_result=final_processing_result,
                     success=(
-                        workflow.status.value == "completed" and final_execution.success
+                        workflow.status.value == "completed"
+                        and (
+                            final_execution.success
+                            if final_execution is not None
+                            else False
+                        )
                     ),
-                    error=(final_execution.stderr or None),
+                    error=(
+                        final_execution.stderr
+                        if final_execution is not None
+                        else (
+                            "Workflow terminated before a "
+                            "RuntimeProcessingResult was produced."
+                        )
+                    ),
                 )
 
                 print("\n========== EXECUTION MEMORY ==========")
@@ -300,11 +319,24 @@ class TaskWorker:
 
                 print(f"ATTEMPT ID: {attempt_id}")
 
+                print(f"PROCESSING RESULTS: {len(processing_results)}")
+
                 print("STATUS: finalized")
+
+                print(
+                    f"FINAL ATTEMPT STATUS: "
+                    f"{state['execution_memory'].attempts[-1].status.value}"
+                )
+
             completed_attempt = None
 
-            if attempt_id is not None and state["execution_memory"].attempts:
-                completed_attempt = state["execution_memory"].attempts[-1]
+            if attempt_id is not None:
+
+                for attempt in state["execution_memory"].attempts:
+
+                    if attempt.attempt_id == attempt_id:
+                        completed_attempt = attempt
+                        break
             # ==================================================
             # 9. Clear active attempt pointer
             # ==================================================
@@ -394,26 +426,33 @@ class TaskWorker:
             # RuntimeProcessingResult when none exists.
             # --------------------------------------------------
 
-            if attempt_id is not None and processing_results:
+            if attempt_id is not None:
 
                 try:
 
                     ExecutionMemoryManager.finish_attempt(
                         execution_memory=state["execution_memory"],
                         attempt_id=attempt_id,
-                        runtime_result=(processing_results[-1]),
+                        runtime_result=(
+                            processing_results[-1] if processing_results else None
+                        ),
                         success=False,
-                        error=("Task execution was cancelled."),
+                        error=str(error),
                     )
 
                 except ValueError:
-                    # Preserve the original cancellation.
+                    # Do not mask the original worker error.
                     pass
+
             completed_attempt = None
 
-            if attempt_id is not None and state["execution_memory"].attempts:
-                completed_attempt = state["execution_memory"].attempts[-1]
-            task_execution.active_attempt_id = None
+            if attempt_id is not None:
+
+                for attempt in state["execution_memory"].attempts:
+
+                    if attempt.attempt_id == attempt_id:
+                        completed_attempt = attempt
+                        break
 
             task_execution.status = TaskExecutionStatus.CANCELLED
 

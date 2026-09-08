@@ -154,3 +154,52 @@ class ExecutionMemoryManager:
             attempt.artifact_ids.append(
                 artifact_id
             )
+    
+    @staticmethod
+    def merge_completed_attempt(
+        *,
+        execution_memory: ExecutionMemory,
+        attempt: ExecutionAttempt,
+    ) -> None:
+        """
+        Merge one completed task-local execution attempt into
+        authoritative ExecutionMemory.
+
+        This operation is used by the concurrent result
+        reconciliation boundary.
+
+        The attempt was created and finalized inside an isolated
+        TaskWorker ExecutionMemory. The reconciler transfers the
+        completed record into central ExecutionMemory only after
+        the worker has finished.
+
+        The method never merges a RUNNING/PENDING attempt.
+        """
+
+        if attempt.status not in (
+            AttemptStatus.SUCCEEDED,
+            AttemptStatus.FAILED,
+        ):
+            raise ValueError(
+                f"Cannot merge execution attempt "
+                f"'{attempt.attempt_id}' because its status "
+                f"is '{attempt.status.value}'. Only completed "
+                "attempts may be merged."
+            )
+
+        # ------------------------------------------------------
+        # Concurrent reconciliation must be idempotent.
+        # ------------------------------------------------------
+
+        for existing in execution_memory.attempts:
+
+            if existing.attempt_id == attempt.attempt_id:
+                return
+
+        # ------------------------------------------------------
+        # Preserve the completed worker-produced attempt.
+        # ------------------------------------------------------
+
+        execution_memory.attempts.append(
+            attempt.model_copy(deep=True)
+        )

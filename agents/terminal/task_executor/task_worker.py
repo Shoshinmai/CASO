@@ -63,9 +63,7 @@ class TaskWorker:
     ) -> None:
 
         self.workflow_runtime = (
-            workflow_runtime
-            if workflow_runtime is not None
-            else WorkflowRuntime()
+            workflow_runtime if workflow_runtime is not None else WorkflowRuntime()
         )
 
     async def execute(
@@ -99,24 +97,18 @@ class TaskWorker:
             # 1. Mark local execution as running
             # ==================================================
 
-            task_execution.status = (
-                TaskExecutionStatus.RUNNING
-            )
+            task_execution.status = TaskExecutionStatus.RUNNING
 
             # ==================================================
             # 2. Build task-local Executor context
             # ==================================================
 
-            execution_context = (
-                build_execution_context_for_task(
-                    state=state,
-                    task=task,
-                )
+            execution_context = build_execution_context_for_task(
+                state=state,
+                task=task,
             )
 
-            prompt = TERMINAL_EXECUTOR_PROMPT.format(
-                **execution_context.model_dump()
-            )
+            prompt = TERMINAL_EXECUTOR_PROMPT.format(**execution_context.model_dump())
 
             # ==================================================
             # 3. Generate task-local workflow
@@ -140,29 +132,17 @@ class TaskWorker:
 
             task_execution.workflow = workflow
 
-            print(
-                "\n========== TASK WORKER =========="
-            )
+            print("\n========== TASK WORKER ==========")
 
-            print(
-                f"TASK ID: {task.task_id}"
-            )
+            print(f"TASK ID: {task.task_id}")
 
-            print(
-                f"OBJECTIVE: {task.objective}"
-            )
+            print(f"OBJECTIVE: {task.objective}")
 
-            print(
-                "\n========== WORKFLOW =========="
-            )
+            print("\n========== WORKFLOW ==========")
 
-            print(
-                workflow.model_dump()
-            )
+            print(workflow.model_dump())
 
-            for i, step in enumerate(
-                workflow.steps
-            ):
+            for i, step in enumerate(workflow.steps):
 
                 print(
                     f"\n[STEP-{i + 1}] --> "
@@ -184,42 +164,26 @@ class TaskWorker:
             # attempt.
             # ==================================================
 
-            first_step = (
-                workflow.steps[0]
-            )
+            first_step = workflow.steps[0]
 
             attempt = ExecutionMemoryManager.start_attempt(
-                execution_memory=state[
-                    "execution_memory"
-                ],
+                execution_memory=state["execution_memory"],
                 capability=first_step.capability,
-                strategy=(
-                    workflow.execution_strategy
-                ),
+                strategy=(workflow.execution_strategy),
                 arguments=first_step.arguments,
             )
 
             attempt_id = attempt.attempt_id
 
-            task_execution.active_attempt_id = (
-                attempt_id
-            )
+            task_execution.active_attempt_id = attempt_id
 
-            print(
-                "\n========== EXECUTION MEMORY =========="
-            )
+            print("\n========== EXECUTION MEMORY ==========")
 
-            print(
-                f"TASK ID: {task.task_id}"
-            )
+            print(f"TASK ID: {task.task_id}")
 
-            print(
-                f"ATTEMPT ID: {attempt_id}"
-            )
+            print(f"ATTEMPT ID: {attempt_id}")
 
-            print(
-                "STATUS: running"
-            )
+            print("STATUS: running")
 
             # ==================================================
             # 6. Execute workflow until terminal
@@ -231,39 +195,27 @@ class TaskWorker:
                 "cancelled",
             ):
 
-                execution_result = (
-                    await self.workflow_runtime.execute_next_step(
-                        workflow,
-                    )
+                execution_result = await self.workflow_runtime.execute_next_step(
+                    workflow,
                 )
 
                 # --------------------------------------------------
                 # Update local workflow.
                 # --------------------------------------------------
 
-                workflow = execution_result[
-                    "workflow"
-                ]
+                workflow = execution_result["workflow"]
 
-                task_execution.workflow = (
-                    workflow
-                )
+                task_execution.workflow = workflow
 
                 # --------------------------------------------------
                 # Capture execution-step metadata.
                 # --------------------------------------------------
 
-                tool_result = execution_result.get(
-                    "tool_result"
-                )
+                tool_result = execution_result.get("tool_result")
 
-                step_id = execution_result.get(
-                    "step_id"
-                )
+                step_id = execution_result.get("step_id")
 
-                capability = execution_result.get(
-                    "capability"
-                )
+                capability = execution_result.get("capability")
 
                 # --------------------------------------------------
                 # Process the actual tool result.
@@ -271,9 +223,7 @@ class TaskWorker:
 
                 if tool_result is not None:
 
-                    tool_results.append(
-                        tool_result
-                    )
+                    tool_results.append(tool_result)
 
                     if not capability:
 
@@ -283,44 +233,26 @@ class TaskWorker:
                             "capability."
                         )
 
-                    processed_result = (
-                        await process_tool_result(
-                            state=state,
-                            tool_name=capability,
-                            raw_result=tool_result,
-                            attempt=(
-                                len(processing_results) + 1
-                            ),
-                        )
+                    processed_result = await process_tool_result(
+                        state=state,
+                        tool_name=capability,
+                        raw_result=tool_result,
+                        attempt=(len(processing_results) + 1),
                     )
 
-                    processing_results.append(
-                        processed_result
-                    )
+                    processing_results.append(processed_result)
 
-                    print(
-                        "\n========== TASK RESULT PROCESSED =========="
-                    )
+                    print("\n========== TASK RESULT PROCESSED ==========")
 
-                    print(
-                        f"TASK ID: {task.task_id}"
-                    )
+                    print(f"TASK ID: {task.task_id}")
 
-                    print(
-                        f"STEP ID: {step_id}"
-                    )
+                    print(f"STEP ID: {step_id}")
 
-                    print(
-                        f"CAPABILITY: {capability}"
-                    )
+                    print(f"CAPABILITY: {capability}")
 
-                    print(
-                        processed_result
-                    )
+                    print(processed_result)
 
-                if execution_result.get(
-                    "completed"
-                ):
+                if execution_result.get("completed"):
                     break
 
             # ==================================================
@@ -330,8 +262,7 @@ class TaskWorker:
             task_execution.result = {
                 "tool_results": tool_results,
                 "processing_results": [
-                    result.model_dump()
-                    for result in processing_results
+                    result.model_dump() for result in processing_results
                 ],
             }
 
@@ -347,63 +278,38 @@ class TaskWorker:
             # RuntimeProcessingResult.
             # ==================================================
 
-            if (
-                attempt_id is not None
-                and processing_results
-            ):
+            if attempt_id is not None and processing_results:
 
-                final_processing_result = (
-                    processing_results[-1]
-                )
+                final_processing_result = processing_results[-1]
 
-                final_execution = (
-                    final_processing_result
-                    .normalized_result
-                    .execution
-                )
+                final_execution = final_processing_result.normalized_result.execution
 
                 ExecutionMemoryManager.finish_attempt(
-                    execution_memory=state[
-                        "execution_memory"
-                    ],
+                    execution_memory=state["execution_memory"],
                     attempt_id=attempt_id,
-                    runtime_result=(
-                        final_processing_result
-                    ),
+                    runtime_result=(final_processing_result),
                     success=(
-                        workflow.status.value
-                        == "completed"
-                        and final_execution.success
+                        workflow.status.value == "completed" and final_execution.success
                     ),
-                    error=(
-                        final_execution.stderr
-                        or None
-                    ),
+                    error=(final_execution.stderr or None),
                 )
 
-                print(
-                    "\n========== EXECUTION MEMORY =========="
-                )
+                print("\n========== EXECUTION MEMORY ==========")
 
-                print(
-                    f"TASK ID: {task.task_id}"
-                )
+                print(f"TASK ID: {task.task_id}")
 
-                print(
-                    f"ATTEMPT ID: {attempt_id}"
-                )
+                print(f"ATTEMPT ID: {attempt_id}")
 
-                print(
-                    "STATUS: finalized"
-                )
+                print("STATUS: finalized")
+            completed_attempt = None
 
+            if attempt_id is not None and state["execution_memory"].attempts:
+                completed_attempt = state["execution_memory"].attempts[-1]
             # ==================================================
             # 9. Clear active attempt pointer
             # ==================================================
 
-            task_execution.active_attempt_id = (
-                None
-            )
+            task_execution.active_attempt_id = None
 
             # ==================================================
             # 10. COMPLETED
@@ -411,30 +317,19 @@ class TaskWorker:
 
             if workflow.status.value == "completed":
 
-                task_execution.status = (
-                    TaskExecutionStatus.COMPLETED
-                )
+                task_execution.status = TaskExecutionStatus.COMPLETED
 
                 return TaskExecutionResult(
-                    execution_id=(
-                        task_execution.execution_id
-                    ),
+                    execution_id=(task_execution.execution_id),
+                    execution_attempt_id=attempt_id,
+                    execution_attempt=completed_attempt,
                     plan_id=task_execution.plan_id,
                     task_id=task_execution.task_id,
-                    status=(
-                        TaskExecutionStatus.COMPLETED
-                    ),
-                    execution_attempt_id=attempt_id,
-                    workflow_id=(
-                        workflow.workflow_id
-                    ),
+                    status=(TaskExecutionStatus.COMPLETED),
+                    workflow_id=(workflow.workflow_id),
                     result=task_execution.result,
-                    metadata=(
-                        task_execution.metadata
-                    ),
-                    processing_results=(
-                        processing_results
-                    ),
+                    metadata=(task_execution.metadata),
+                    processing_results=(processing_results),
                 )
 
             # ==================================================
@@ -443,69 +338,44 @@ class TaskWorker:
 
             if workflow.status.value == "cancelled":
 
-                task_execution.status = (
-                    TaskExecutionStatus.CANCELLED
-                )
+                task_execution.status = TaskExecutionStatus.CANCELLED
 
                 return TaskExecutionResult(
-                    execution_id=(
-                        task_execution.execution_id
-                    ),
+                    execution_id=(task_execution.execution_id),
+                    execution_attempt_id=attempt_id,
+                    execution_attempt=completed_attempt,
                     plan_id=task_execution.plan_id,
                     task_id=task_execution.task_id,
-                    status=(
-                        TaskExecutionStatus.CANCELLED
-                    ),
-                    execution_attempt_id=attempt_id,
-                    workflow_id=(
-                        workflow.workflow_id
-                    ),
+                    status=(TaskExecutionStatus.CANCELLED),
+                    workflow_id=(workflow.workflow_id),
                     result=task_execution.result,
-                    error=(
-                        "Task execution was cancelled."
-                    ),
-                    metadata=(
-                        task_execution.metadata
-                    ),
-                    processing_results=(
-                        processing_results
-                    ),
+                    error=("Task execution was cancelled."),
+                    metadata=(task_execution.metadata),
+                    processing_results=(processing_results),
                 )
 
             # ==================================================
             # 12. FAILED WORKFLOW
             # ==================================================
 
-            task_execution.status = (
-                TaskExecutionStatus.FAILED
-            )
+            task_execution.status = TaskExecutionStatus.FAILED
 
             task_execution.error = (
-                "Workflow ended with status: "
-                f"{workflow.status.value}"
+                "Workflow ended with status: " f"{workflow.status.value}"
             )
 
             return TaskExecutionResult(
-                execution_id=(
-                    task_execution.execution_id
-                ),
+                execution_id=(task_execution.execution_id),
+                execution_attempt_id=attempt_id,
+                execution_attempt=completed_attempt,
                 plan_id=task_execution.plan_id,
                 task_id=task_execution.task_id,
                 status=TaskExecutionStatus.FAILED,
-                execution_attempt_id=attempt_id,
-                workflow_id=(
-                    workflow.workflow_id
-                ),
+                workflow_id=(workflow.workflow_id),
                 result=task_execution.result,
-                error=(
-                    task_execution.error
-                ),
-                metadata=(
-                    task_execution.metadata
-                ),
-                processing_results=(
-                    processing_results
-                ),
+                error=(task_execution.error),
+                metadata=(task_execution.metadata),
+                processing_results=(processing_results),
             )
 
         # ======================================================
@@ -524,42 +394,30 @@ class TaskWorker:
             # RuntimeProcessingResult when none exists.
             # --------------------------------------------------
 
-            if (
-                attempt_id is not None
-                and processing_results
-            ):
+            if attempt_id is not None and processing_results:
 
                 try:
 
                     ExecutionMemoryManager.finish_attempt(
-                        execution_memory=state[
-                            "execution_memory"
-                        ],
+                        execution_memory=state["execution_memory"],
                         attempt_id=attempt_id,
-                        runtime_result=(
-                            processing_results[-1]
-                        ),
+                        runtime_result=(processing_results[-1]),
                         success=False,
-                        error=(
-                            "Task execution was cancelled."
-                        ),
+                        error=("Task execution was cancelled."),
                     )
 
                 except ValueError:
                     # Preserve the original cancellation.
                     pass
+            completed_attempt = None
 
-            task_execution.active_attempt_id = (
-                None
-            )
+            if attempt_id is not None and state["execution_memory"].attempts:
+                completed_attempt = state["execution_memory"].attempts[-1]
+            task_execution.active_attempt_id = None
 
-            task_execution.status = (
-                TaskExecutionStatus.CANCELLED
-            )
+            task_execution.status = TaskExecutionStatus.CANCELLED
 
-            task_execution.error = (
-                "Task worker was cancelled."
-            )
+            task_execution.error = "Task worker was cancelled."
 
             raise
 
@@ -573,21 +431,14 @@ class TaskWorker:
             # Attempt lifecycle
             # --------------------------------------------------
 
-            if (
-                attempt_id is not None
-                and processing_results
-            ):
+            if attempt_id is not None and processing_results:
 
                 try:
 
                     ExecutionMemoryManager.finish_attempt(
-                        execution_memory=state[
-                            "execution_memory"
-                        ],
+                        execution_memory=state["execution_memory"],
                         attempt_id=attempt_id,
-                        runtime_result=(
-                            processing_results[-1]
-                        ),
+                        runtime_result=(processing_results[-1]),
                         success=False,
                         error=str(error),
                     )
@@ -596,49 +447,34 @@ class TaskWorker:
                     # Do not mask the original worker error.
                     pass
 
-            task_execution.active_attempt_id = (
-                None
-            )
+            completed_attempt = None
 
-            task_execution.status = (
-                TaskExecutionStatus.FAILED
-            )
+            if attempt_id is not None and state["execution_memory"].attempts:
+                completed_attempt = state["execution_memory"].attempts[-1]
 
-            task_execution.error = str(
-                error
-            )
+            task_execution.active_attempt_id = None
+
+            task_execution.status = TaskExecutionStatus.FAILED
+
+            task_execution.error = str(error)
 
             task_execution.result = {
                 "tool_results": tool_results,
                 "processing_results": [
-                    result.model_dump()
-                    for result in processing_results
+                    result.model_dump() for result in processing_results
                 ],
             }
 
             return TaskExecutionResult(
-                execution_id=(
-                    task_execution.execution_id
-                ),
+                execution_id=(task_execution.execution_id),
+                execution_attempt_id=attempt_id,
+                execution_attempt=completed_attempt,
                 plan_id=task_execution.plan_id,
                 task_id=task_execution.task_id,
-                status=(
-                    TaskExecutionStatus.FAILED
-                ),
-                execution_attempt_id=attempt_id,
-                workflow_id=(
-                    workflow.workflow_id
-                    if workflow is not None
-                    else None
-                ),
-                result=(
-                    task_execution.result
-                ),
+                status=(TaskExecutionStatus.FAILED),
+                workflow_id=(workflow.workflow_id if workflow is not None else None),
+                result=(task_execution.result),
                 error=str(error),
-                metadata=(
-                    task_execution.metadata
-                ),
-                processing_results=(
-                    processing_results
-                ),
+                metadata=(task_execution.metadata),
+                processing_results=(processing_results),
             )

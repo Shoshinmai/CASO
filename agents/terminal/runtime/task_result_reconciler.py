@@ -66,11 +66,33 @@ class TaskResultReconciler:
         Returns the same mutated TaskPlan instance.
         """
 
+        print(
+            f"\n[RECONCILER] "
+            f"Starting wave reconciliation | "
+            f"plan={plan.plan_id} | "
+            f"results={len(results)}"
+        )
+
+        print(
+            "[RECONCILER] "
+            f"Result order: "
+            f"{[result.task_id for result in results]}"
+        )
+
         # ------------------------------------------------------
         # Validate that all results belong to this plan.
         # ------------------------------------------------------
 
         for result in results:
+
+            print(
+                f"[RECONCILER] "
+                f"Task result | "
+                f"task={result.task_id} | "
+                f"execution={result.execution_id} | "
+                f"attempt={result.execution_attempt_id} | "
+                f"status={result.status}"
+            )
 
             if result.plan_id != plan.plan_id:
                 raise ValueError(
@@ -111,6 +133,13 @@ class TaskResultReconciler:
         # ------------------------------------------------------
 
         for result in results:
+
+            print(
+                f"[RECONCILER] "
+                f"Applying task outcome | "
+                f"task={result.task_id} | "
+                f"status={result.status}"
+            )
 
             if result.status == TaskExecutionStatus.COMPLETED:
 
@@ -156,6 +185,11 @@ class TaskResultReconciler:
         # Workers only produced ArtifactDecision objects.
         # ------------------------------------------------------
 
+        print(
+            "[RECONCILER] "
+            "Beginning artifact reconciliation."
+        )
+
         for result in results:
 
             TaskResultReconciler._reconcile_artifacts(
@@ -166,6 +200,11 @@ class TaskResultReconciler:
         # ------------------------------------------------------
         # Recompute readiness after the entire wave is applied.
         # ------------------------------------------------------
+
+        print(
+            "[RECONCILER] "
+            "Updating task readiness."
+        )
 
         TaskPlanManager.update_task_readiness(
             plan=plan,
@@ -179,6 +218,12 @@ class TaskResultReconciler:
             TaskPlanManager.get_blocked_tasks(
                 plan=plan,
             )
+        )
+
+        print(
+            "[RECONCILER] "
+            f"Blocked tasks detected: "
+            f"{[task.task_id for task in blocked_tasks]}"
         )
 
         for task in blocked_tasks:
@@ -199,9 +244,20 @@ class TaskResultReconciler:
         if TaskPlanManager.is_plan_complete(
             plan=plan,
         ):
+            print(
+                "[RECONCILER] "
+                "Plan is complete."
+            )
+
             TaskPlanManager.complete_plan(
                 plan=plan,
             )
+
+        print(
+            f"[RECONCILER] "
+            f"Wave reconciliation complete | "
+            f"plan={plan.plan_id}"
+        )
 
         return plan
 
@@ -212,19 +268,17 @@ class TaskResultReconciler:
         state: dict,
     ) -> None:
         """
-        Persist stored artifact candidates produced by one task.
+        Reconcile task-local execution memory and artifacts into
+        authoritative central runtime state.
 
-        Each RuntimeProcessingResult corresponds to one workflow
-        capability execution.
+        Ordering is important:
 
-        Only ArtifactDecision(action=STORE) results are persisted.
+            1. merge the completed execution attempt
+            2. persist artifact candidates
+            3. associate persisted artifact IDs with that attempt
 
-        The resulting artifact is represented centrally by a
-        lightweight ArtifactReference.
-
-        Artifact persistence is idempotent within this result
-        reconciliation pass because the resulting reference is
-        checked before insertion.
+        This guarantees that concurrent workers never depend on
+        completion order or on a global "current attempt".
         """
 
         artifact_references = state[
@@ -235,6 +289,70 @@ class TaskResultReconciler:
             "execution_memory"
         ]
 
+        print(
+            f"[ARTIFACT] "
+            f"Processing task | "
+            f"task={result.task_id} | "
+            f"attempt={result.execution_attempt_id} | "
+            f"processing_results="
+            f"{len(result.processing_results)}"
+        )
+
+        # ------------------------------------------------------
+        # 1. Merge the worker's completed execution attempt.
+        # ------------------------------------------------------
+
+        attempt = result.execution_attempt
+
+        if attempt is not None:
+
+            print(
+                f"[MEMORY] "
+                f"Merging attempt | "
+                f"task={result.task_id} | "
+                f"attempt={result.execution_attempt_id}"
+            )
+
+            # Defensive identity check.
+            if (
+                result.execution_attempt_id is not None
+                and attempt.attempt_id
+                != result.execution_attempt_id
+            ):
+                raise ValueError(
+                    "TaskExecutionResult execution attempt "
+                    "identity mismatch: "
+                    f"result has "
+                    f"'{result.execution_attempt_id}', "
+                    f"but execution_attempt contains "
+                    f"'{attempt.attempt_id}'."
+                )
+
+            ExecutionMemoryManager.merge_completed_attempt(
+                execution_memory=execution_memory,
+                attempt=attempt,
+            )
+
+            print(
+                f"[MEMORY] "
+                f"Attempt merged | "
+                f"task={result.task_id} | "
+                f"attempt={result.execution_attempt_id}"
+            )
+
+        else:
+
+            print(
+                f"[MEMORY] "
+                f"No execution attempt payload | "
+                f"task={result.task_id} | "
+                f"attempt={result.execution_attempt_id}"
+            )
+
+        # ------------------------------------------------------
+        # 2. Persist stored artifact candidates.
+        # ------------------------------------------------------
+
         for processing_result in (
             result.processing_results
         ):
@@ -243,7 +361,23 @@ class TaskResultReconciler:
                 processing_result.artifact_decision
             )
 
+            print(
+                f"[ARTIFACT] "
+                f"Decision | "
+                f"task={result.task_id} | "
+                f"attempt={result.execution_attempt_id} | "
+                f"action={decision.action}"
+            )
+
             if decision.action != ArtifactAction.STORE:
+
+                print(
+                    f"[ARTIFACT] "
+                    f"Skipping persistence | "
+                    f"task={result.task_id} | "
+                    f"action={decision.action}"
+                )
+
                 continue
 
             artifact = decision.artifact
@@ -253,6 +387,14 @@ class TaskResultReconciler:
                     "Artifact decision requested STORE but "
                     "contained no artifact candidate."
                 )
+
+            print(
+                f"[ARTIFACT] "
+                f"Persisting artifact | "
+                f"task={result.task_id} | "
+                f"attempt={result.execution_attempt_id} | "
+                f"type={artifact.artifact_type}"
+            )
 
             # --------------------------------------------------
             # Persist artifact globally.
@@ -267,6 +409,14 @@ class TaskResultReconciler:
                     "task_id": result.task_id,
                     "execution_id": result.execution_id,
                 },
+            )
+
+            print(
+                f"[ARTIFACT] "
+                f"Artifact stored | "
+                f"task={result.task_id} | "
+                f"attempt={result.execution_attempt_id} | "
+                f"artifact_id={artifact_id}"
             )
 
             # --------------------------------------------------
@@ -298,22 +448,51 @@ class TaskResultReconciler:
             )
 
             if not already_present:
+
                 artifact_references.append(
                     reference
                 )
 
+                print(
+                    f"[ARTIFACT] "
+                    f"Reference registered | "
+                    f"task={result.task_id} | "
+                    f"artifact_id={artifact_id}"
+                )
+
+            else:
+
+                print(
+                    f"[ARTIFACT] "
+                    f"Reference already present | "
+                    f"task={result.task_id} | "
+                    f"artifact_id={artifact_id}"
+                )
+
             # --------------------------------------------------
-            # Associate artifact with the execution attempt.
-            #
-            # D.7.2 worker execution memory is task-local.
-            # The TaskExecutionResult must therefore expose
-            # enough information for us to identify that attempt.
+            # 3. Associate artifact with exact attempt.
             # --------------------------------------------------
+
+            print(
+                f"[MEMORY] "
+                f"Associating artifact | "
+                f"task={result.task_id} | "
+                f"attempt={result.execution_attempt_id} | "
+                f"artifact={artifact_id}"
+            )
 
             TaskResultReconciler._associate_artifact_with_attempt(
                 result=result,
                 artifact_id=artifact_id,
                 execution_memory=execution_memory,
+            )
+
+            print(
+                f"[MEMORY] "
+                f"Artifact associated | "
+                f"task={result.task_id} | "
+                f"attempt={result.execution_attempt_id} | "
+                f"artifact={artifact_id}"
             )
 
     @staticmethod
@@ -335,9 +514,7 @@ class TaskResultReconciler:
         execution_attempt_id created by the TaskWorker.
         """
 
-        attempt_id = (
-            result.execution_attempt_id
-        )
+        attempt_id = result.execution_attempt_id
 
         if not attempt_id:
             raise ValueError(

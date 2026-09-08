@@ -26,7 +26,7 @@ async def concurrent_execution_node(
     """
     Execute the current TaskPlan through the concurrent
     task-execution coordinator.
-
+    
     This node is the graph adapter for the Prototype 1 concurrent
     execution path.
 
@@ -46,6 +46,18 @@ async def concurrent_execution_node(
       concurrent-workflow container
     - run the Critic
     - make semantic decisions
+
+    Temporary debugging instrumentation is included so the
+    original PowerShell tab clearly shows:
+
+        CONCURRENT EXECUTION START
+        WAITING FOR WORKERS
+        CONCURRENT EXECUTION END
+        RETURNING TO CENTRAL RUNTIME
+
+    The actual workers remain asyncio tasks inside the same
+    Python process. The worker PowerShell tabs are only
+    monitors.
     """
 
     task_plan = state.get(
@@ -67,6 +79,63 @@ async def concurrent_execution_node(
             "Cannot start concurrent execution without "
             "RuntimeState."
         )
+
+    # ==========================================================
+    # TEMPORARY DEBUGGING
+    # ==========================================================
+
+    print()
+    print("=" * 72)
+    print("              CONCURRENT EXECUTION START")
+    print("=" * 72)
+
+    print()
+    print("Plan:", task_plan.plan_id)
+    print("Goal:", task_plan.goal)
+
+    print()
+    print("Execution wave candidates:")
+
+    for task in task_plan.tasks:
+
+        if task.status.value == "ready":
+            print(
+                f"  {task.task_id}"
+                f" | status={task.status.value}"
+                f" | deps={task.dependencies}"
+            )
+
+    ready_tasks = [
+        task
+        for task in task_plan.tasks
+        if task.status.value == "ready"
+    ]
+
+    print()
+    print(
+        f"Ready tasks in current plan: "
+        f"{len(ready_tasks)}"
+    )
+
+    print(
+        "Max concurrency: 3"
+    )
+
+    print()
+    print("=" * 72)
+    print("              WAITING FOR WORKERS")
+    print("=" * 72)
+
+    print()
+    print(
+        "Worker monitor tabs should now show each "
+        "concurrent task."
+    )
+
+    print(
+        "The original PowerShell tab will remain here "
+        "until all workers finish."
+    )
 
     # ==========================================================
     # Build task-local execution stack
@@ -101,10 +170,7 @@ async def concurrent_execution_node(
     updated_plan = coordinated_execution.plan
 
     # ==========================================================
-    # Build the deterministic plan-level execution snapshot.
-    #
-    # At this point every admitted execution wave has completed
-    # and its results have been reconciled.
+    # Build deterministic plan-level execution snapshot
     # ==========================================================
 
     plan_execution_outcome = (
@@ -117,17 +183,39 @@ async def concurrent_execution_node(
     )
 
     # ==========================================================
-    # Concurrent execution has reached a stable review boundary.
+    # TEMPORARY DEBUGGING — execution finished
+    # ==========================================================
+
+    print()
+    print("=" * 72)
+    print("              CONCURRENT EXECUTION END")
+    print("=" * 72)
+
+    print()
+    print("Completed workers:")
+
+    for result in coordinated_execution.task_results:
+
+        print(
+            f"  {result.task_id}"
+            f" | status={result.status.value}"
+        )
+
+    print()
+    print(
+        "Returning to central runtime..."
+    )
+
+    print("=" * 72)
+
+    # ==========================================================
+    # Concurrent execution has reached a stable review boundary
     #
-    # The Runtime Kernel owns the state transition:
-    #
-    #     EXECUTING
-    #          ↓
-    #     EXECUTION_COMPLETED
-    #          ↓
-    #      REVIEWING
-    #
-    # The Critic will be invoked by the graph after this node.
+    # EXECUTING
+    #     ↓
+    # EXECUTION_COMPLETED
+    #     ↓
+    # REVIEWING
     # ==========================================================
 
     RuntimeKernel.handle_event(

@@ -12,6 +12,7 @@ from agents.terminal.prompts.executor_prompt import (
 from agents.terminal.result_processing.processor import (
     process_tool_result,
 )
+from agents.terminal.runtime.concurrent_debug import ConcurrentDebugSession
 from agents.terminal.runtime.task_execution import (
     TaskExecutionContext,
     TaskExecutionResult,
@@ -60,10 +61,32 @@ class TaskWorker:
         self,
         *,
         workflow_runtime: WorkflowRuntime | None = None,
+        debug_session: ConcurrentDebugSession | None = None,
     ) -> None:
 
         self.workflow_runtime = (
             workflow_runtime if workflow_runtime is not None else WorkflowRuntime()
+        )
+
+        self.debug_session = debug_session
+
+    def _debug(
+        self,
+        *,
+        task_id: str,
+        event: str,
+        message: str,
+        **metadata,
+    ) -> None:
+
+        if self.debug_session is None:
+            return
+
+        self.debug_session.write(
+            task_id=task_id,
+            event=event,
+            message=message,
+            **metadata,
         )
 
     async def execute(
@@ -153,6 +176,14 @@ class TaskWorker:
                     f"STATUS -> {step.status})"
                 )
 
+            self._debug(
+                task_id=task.task_id,
+                event="WORKFLOW",
+                message="Executor workflow generated.",
+                workflow_id=workflow.workflow_id,
+                step_count=len(workflow.steps),
+            )
+
             # ==================================================
             # 5. Start task execution-memory attempt
             # ==================================================
@@ -166,6 +197,13 @@ class TaskWorker:
             # ==================================================
 
             first_step = workflow.steps[0]
+
+            self._debug(
+                task_id=task.task_id,
+                event="ATTEMPT",
+                message="ExecutionMemory attempt started.",
+                attempt_id=attempt_id,
+            )
 
             attempt = ExecutionMemoryManager.start_attempt(
                 execution_memory=state["execution_memory"],
@@ -196,6 +234,30 @@ class TaskWorker:
                 "cancelled",
             ):
 
+                current_step = next(
+                    (
+                        step
+                        for step in workflow.steps
+                        if step.status.value
+                        in (
+                            "pending",
+                            "in_progress",
+                        )
+                    ),
+                    None,
+                )
+
+                self._debug(
+                    task_id=task.task_id,
+                    event="STEP_START",
+                    message="Executing workflow step.",
+                    step_id=(
+                        current_step.step_id if current_step is not None else None
+                    ),
+                    capability=(
+                        current_step.capability if current_step is not None else None
+                    ),
+                )
                 execution_result = await self.workflow_runtime.execute_next_step(
                     workflow,
                 )
@@ -241,6 +303,20 @@ class TaskWorker:
                         attempt=(len(processing_results) + 1),
                     )
 
+                    self._debug(
+                        task_id=task.task_id,
+                        event="PROCESSING",
+                        message=(
+                            "Tool result passed through the Runtime "
+                            "Processing Pipeline."
+                        ),
+                        step_id=step_id,
+                        capability=capability,
+                        artifact_action=(
+                            processed_result.artifact_decision.action.value
+                        ),
+                    )
+
                     processing_results.append(processed_result)
 
                     print("\n========== TASK RESULT PROCESSED ==========")
@@ -278,6 +354,15 @@ class TaskWorker:
             # capability invocation produces at least one
             # RuntimeProcessingResult.
             # ==================================================
+
+            self._debug(
+                task_id=task.task_id,
+                event="ATTEMPT_DONE",
+                message="ExecutionMemory attempt finalized.",
+                attempt_id=attempt_id,
+                status=completed_attempt.status.value,
+                processing_results=len(processing_results),
+            )
 
             if attempt_id is not None:
 
@@ -533,6 +618,14 @@ class TaskWorker:
                     result.model_dump() for result in processing_results
                 ],
             }
+
+            self._debug(
+                task_id=task.task_id,
+                event="ERROR",
+                message="Worker execution failed.",
+                attempt_id=attempt_id,
+                error=str(error),
+            )
 
             print("\n========== EXECUTION MEMORY ==========")
 

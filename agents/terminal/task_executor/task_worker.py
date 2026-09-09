@@ -76,9 +76,7 @@ class TaskWorker:
     ) -> None:
 
         self.workflow_runtime = (
-            workflow_runtime
-            if workflow_runtime is not None
-            else WorkflowRuntime()
+            workflow_runtime if workflow_runtime is not None else WorkflowRuntime()
         )
 
         self.debug_session = debug_session
@@ -137,16 +135,12 @@ class TaskWorker:
             # 1. Mark local execution as running
             # ==================================================
 
-            task_execution.status = (
-                TaskExecutionStatus.RUNNING
-            )
+            task_execution.status = TaskExecutionStatus.RUNNING
 
             self._debug(
                 task_id=task.task_id,
                 event="WORKER",
-                message=(
-                    "TaskWorker started execution."
-                ),
+                message=("TaskWorker started execution."),
                 objective=task.objective,
             )
 
@@ -154,23 +148,17 @@ class TaskWorker:
             # 2. Build task-local Executor context
             # ==================================================
 
-            execution_context = (
-                build_execution_context_for_task(
-                    state=state,
-                    task=task,
-                )
+            execution_context = build_execution_context_for_task(
+                state=state,
+                task=task,
             )
 
-            prompt = TERMINAL_EXECUTOR_PROMPT.format(
-                **execution_context.model_dump()
-            )
+            prompt = TERMINAL_EXECUTOR_PROMPT.format(**execution_context.model_dump())
 
             self._debug(
                 task_id=task.task_id,
                 event="CONTEXT",
-                message=(
-                    "Task-local Executor context built."
-                ),
+                message=("Task-local Executor context built."),
             )
 
             # ==================================================
@@ -180,19 +168,15 @@ class TaskWorker:
             self._debug(
                 task_id=task.task_id,
                 event="LLM",
-                message=(
-                    "Requesting task-local workflow "
-                    "from Executor."
-                ),
+                message=("Requesting task-local workflow " "from Executor."),
             )
 
-            executor_output: ExecutorOutput = (
-                await call_nvidia(
-                    prompt,
-                    "openai/gpt-oss-20b",
-                    subagent=True,
-                    state_model=ExecutorOutput,
-                )
+            executor_output: ExecutorOutput = await call_nvidia(
+                prompt,
+                # "openai/gpt-oss-20b",
+                "nvidia/nemotron-3-super-120b-a12b",
+                subagent=True,
+                state_model=ExecutorOutput,
             )
 
             workflow = executor_output.workflow
@@ -206,25 +190,15 @@ class TaskWorker:
 
             task_execution.workflow = workflow
 
-            print(
-                "\n========== TASK WORKER =========="
-            )
+            print("\n========== TASK WORKER ==========")
 
-            print(
-                f"TASK ID: {task.task_id}"
-            )
+            print(f"TASK ID: {task.task_id}")
 
-            print(
-                f"OBJECTIVE: {task.objective}"
-            )
+            print(f"OBJECTIVE: {task.objective}")
 
-            print(
-                "\n========== WORKFLOW =========="
-            )
+            print("\n========== WORKFLOW ==========")
 
-            print(
-                workflow.model_dump()
-            )
+            print(workflow.model_dump())
 
             for index, step in enumerate(
                 workflow.steps,
@@ -242,9 +216,7 @@ class TaskWorker:
             self._debug(
                 task_id=task.task_id,
                 event="WORKFLOW",
-                message=(
-                    "Executor workflow generated."
-                ),
+                message=("Executor workflow generated."),
                 workflow_id=workflow.workflow_id,
                 step_count=len(workflow.steps),
             )
@@ -257,9 +229,7 @@ class TaskWorker:
                 self._debug(
                     task_id=task.task_id,
                     event="WORKFLOW_STEP",
-                    message=(
-                        f"Workflow step {index}."
-                    ),
+                    message=(f"Workflow step {index}."),
                     step_id=step.step_id,
                     description=step.description,
                     capability=step.capability,
@@ -273,50 +243,32 @@ class TaskWorker:
 
             first_step = workflow.steps[0]
 
-            attempt = (
-                ExecutionMemoryManager.start_attempt(
-                    execution_memory=(
-                        state["execution_memory"]
-                    ),
-                    capability=first_step.capability,
-                    strategy=(
-                        workflow.execution_strategy
-                    ),
-                    arguments=first_step.arguments,
-                )
+            attempt = ExecutionMemoryManager.start_attempt(
+                execution_memory=(state["execution_memory"]),
+                capability=first_step.capability,
+                strategy=(workflow.execution_strategy),
+                arguments=first_step.arguments,
             )
 
             attempt_id = attempt.attempt_id
 
-            task_execution.active_attempt_id = (
-                attempt_id
-            )
+            task_execution.active_attempt_id = attempt_id
 
             self._debug(
                 task_id=task.task_id,
                 event="ATTEMPT",
-                message=(
-                    "ExecutionMemory attempt started."
-                ),
+                message=("ExecutionMemory attempt started."),
                 attempt_id=attempt_id,
                 capability=first_step.capability,
             )
 
-            print(
-                "\n========== EXECUTION MEMORY =========="
-            )
+            print("\n========== EXECUTION MEMORY ==========")
 
-            print(
-                f"TASK ID: {task.task_id}"
-            )
+            print(f"TASK ID: {task.task_id}")
 
-            print(
-                f"ATTEMPT ID: {attempt_id}"
-            )
+            print(f"ATTEMPT ID: {attempt_id}")
 
-            print(
-                "STATUS: running"
-            )
+            print("STATUS: running")
 
             # ==================================================
             # 6. Execute workflow until terminal
@@ -344,57 +296,36 @@ class TaskWorker:
                 self._debug(
                     task_id=task.task_id,
                     event="STEP_START",
-                    message=(
-                        "Executing workflow step."
-                    ),
+                    message=("Executing workflow step."),
                     step_id=(
-                        current_step.step_id
-                        if current_step is not None
-                        else None
+                        current_step.step_id if current_step is not None else None
                     ),
                     capability=(
-                        current_step.capability
-                        if current_step is not None
-                        else None
+                        current_step.capability if current_step is not None else None
                     ),
                 )
 
-                execution_result = (
-                    await self.workflow_runtime.execute_next_step(
-                        workflow,
-                    )
+                execution_result = await self.workflow_runtime.execute_next_step(
+                    workflow,
                 )
 
-                workflow = execution_result[
-                    "workflow"
-                ]
+                workflow = execution_result["workflow"]
 
                 task_execution.workflow = workflow
 
-                tool_result = execution_result.get(
-                    "tool_result"
-                )
+                tool_result = execution_result.get("tool_result")
 
-                step_id = execution_result.get(
-                    "step_id"
-                )
+                step_id = execution_result.get("step_id")
 
-                capability = execution_result.get(
-                    "capability"
-                )
+                capability = execution_result.get("capability")
 
                 self._debug(
                     task_id=task.task_id,
                     event="STEP_RESULT",
-                    message=(
-                        "WorkflowRuntime completed "
-                        "the current step."
-                    ),
+                    message=("WorkflowRuntime completed " "the current step."),
                     step_id=step_id,
                     capability=capability,
-                    completed=execution_result.get(
-                        "completed"
-                    ),
+                    completed=execution_result.get("completed"),
                     workflow_status=workflow.status.value,
                 )
 
@@ -404,9 +335,7 @@ class TaskWorker:
 
                 if tool_result is not None:
 
-                    tool_results.append(
-                        tool_result
-                    )
+                    tool_results.append(tool_result)
 
                     if not capability:
 
@@ -416,23 +345,14 @@ class TaskWorker:
                             "capability."
                         )
 
-                    processed_result = (
-                        await process_tool_result(
-                            state=state,
-                            tool_name=capability,
-                            raw_result=tool_result,
-                            attempt=(
-                                len(processing_results) + 1
-                            ),
-                        )
+                    processed_result = await process_tool_result(
+                        state=state,
+                        tool_name=capability,
+                        raw_result=tool_result,
+                        attempt=(len(processing_results) + 1),
                     )
 
-                    artifact_action = (
-                        processed_result
-                        .artifact_decision
-                        .action
-                        .value
-                    )
+                    artifact_action = processed_result.artifact_decision.action.value
 
                     self._debug(
                         task_id=task.task_id,
@@ -446,33 +366,19 @@ class TaskWorker:
                         artifact_action=artifact_action,
                     )
 
-                    processing_results.append(
-                        processed_result
-                    )
+                    processing_results.append(processed_result)
 
-                    print(
-                        "\n========== TASK RESULT PROCESSED =========="
-                    )
+                    print("\n========== TASK RESULT PROCESSED ==========")
 
-                    print(
-                        f"TASK ID: {task.task_id}"
-                    )
+                    print(f"TASK ID: {task.task_id}")
 
-                    print(
-                        f"STEP ID: {step_id}"
-                    )
+                    print(f"STEP ID: {step_id}")
 
-                    print(
-                        f"CAPABILITY: {capability}"
-                    )
+                    print(f"CAPABILITY: {capability}")
 
-                    print(
-                        processed_result
-                    )
+                    print(processed_result)
 
-                if execution_result.get(
-                    "completed"
-                ):
+                if execution_result.get("completed"):
                     break
 
             # ==================================================
@@ -482,22 +388,17 @@ class TaskWorker:
             task_execution.result = {
                 "tool_results": tool_results,
                 "processing_results": [
-                    result.model_dump()
-                    for result in processing_results
+                    result.model_dump() for result in processing_results
                 ],
             }
 
             self._debug(
                 task_id=task.task_id,
                 event="WORKFLOW_DONE",
-                message=(
-                    "Task workflow reached terminal state."
-                ),
+                message=("Task workflow reached terminal state."),
                 workflow_id=workflow.workflow_id,
                 workflow_status=workflow.status.value,
-                processing_results=len(
-                    processing_results
-                ),
+                processing_results=len(processing_results),
             )
 
             # ==================================================
@@ -507,31 +408,21 @@ class TaskWorker:
             if attempt_id is not None:
 
                 final_processing_result = (
-                    processing_results[-1]
-                    if processing_results
-                    else None
+                    processing_results[-1] if processing_results else None
                 )
 
                 final_execution = (
-                    final_processing_result
-                    .normalized_result
-                    .execution
-                    if final_processing_result
-                    is not None
+                    final_processing_result.normalized_result.execution
+                    if final_processing_result is not None
                     else None
                 )
 
                 ExecutionMemoryManager.finish_attempt(
-                    execution_memory=(
-                        state["execution_memory"]
-                    ),
+                    execution_memory=(state["execution_memory"]),
                     attempt_id=attempt_id,
-                    runtime_result=(
-                        final_processing_result
-                    ),
+                    runtime_result=(final_processing_result),
                     success=(
-                        workflow.status.value
-                        == "completed"
+                        workflow.status.value == "completed"
                         and (
                             final_execution.success
                             if final_execution is not None
@@ -551,12 +442,8 @@ class TaskWorker:
                 completed_attempt = next(
                     (
                         attempt
-                        for attempt
-                        in state[
-                            "execution_memory"
-                        ].attempts
-                        if attempt.attempt_id
-                        == attempt_id
+                        for attempt in state["execution_memory"].attempts
+                        if attempt.attempt_id == attempt_id
                     ),
                     None,
                 )
@@ -564,47 +451,29 @@ class TaskWorker:
                 self._debug(
                     task_id=task.task_id,
                     event="ATTEMPT_DONE",
-                    message=(
-                        "ExecutionMemory attempt finalized."
-                    ),
+                    message=("ExecutionMemory attempt finalized."),
                     attempt_id=attempt_id,
                     status=(
                         completed_attempt.status.value
                         if completed_attempt is not None
                         else None
                     ),
-                    processing_results=len(
-                        processing_results
-                    ),
+                    processing_results=len(processing_results),
                 )
 
-                print(
-                    "\n========== EXECUTION MEMORY =========="
-                )
+                print("\n========== EXECUTION MEMORY ==========")
 
-                print(
-                    f"TASK ID: {task.task_id}"
-                )
+                print(f"TASK ID: {task.task_id}")
 
-                print(
-                    f"ATTEMPT ID: {attempt_id}"
-                )
+                print(f"ATTEMPT ID: {attempt_id}")
 
-                print(
-                    "PROCESSING RESULTS: "
-                    f"{len(processing_results)}"
-                )
+                print("PROCESSING RESULTS: " f"{len(processing_results)}")
 
-                print(
-                    "STATUS: finalized"
-                )
+                print("STATUS: finalized")
 
                 if completed_attempt is not None:
 
-                    print(
-                        "FINAL ATTEMPT STATUS: "
-                        f"{completed_attempt.status.value}"
-                    )
+                    print("FINAL ATTEMPT STATUS: " f"{completed_attempt.status.value}")
 
             task_execution.active_attempt_id = None
 
@@ -614,33 +483,24 @@ class TaskWorker:
 
             task_execution.status = (
                 TaskExecutionStatus.COMPLETED
-                if workflow.status.value
-                == "completed"
+                if workflow.status.value == "completed"
                 else TaskExecutionStatus.FAILED
             )
 
             self._debug(
                 task_id=task.task_id,
                 event="WORKER_DONE",
-                message=(
-                    "TaskWorker completed execution."
-                ),
+                message=("TaskWorker completed execution."),
                 status=task_execution.status.value,
-                processing_results=len(
-                    processing_results
-                ),
+                processing_results=len(processing_results),
             )
 
             return TaskExecutionResult(
-                execution_id=(
-                    task_execution.execution_id
-                ),
+                execution_id=(task_execution.execution_id),
                 plan_id=task_execution.plan_id,
                 task_id=task_execution.task_id,
                 status=task_execution.status,
-                workflow_id=(
-                    workflow.workflow_id
-                ),
+                workflow_id=(workflow.workflow_id),
                 result=task_execution.result,
                 error=task_execution.error,
                 metadata=task_execution.metadata,
@@ -648,18 +508,14 @@ class TaskWorker:
 
         except asyncio.CancelledError:
 
-            task_execution.status = (
-                TaskExecutionStatus.CANCELLED
-            )
+            task_execution.status = TaskExecutionStatus.CANCELLED
 
             task_execution.active_attempt_id = None
 
             self._debug(
                 task_id=task.task_id,
                 event="CANCELLED",
-                message=(
-                    "TaskWorker execution was cancelled."
-                ),
+                message=("TaskWorker execution was cancelled."),
                 attempt_id=attempt_id,
             )
 
@@ -667,40 +523,26 @@ class TaskWorker:
 
         except Exception as error:
 
-            task_execution.status = (
-                TaskExecutionStatus.FAILED
-            )
+            task_execution.status = TaskExecutionStatus.FAILED
 
-            task_execution.error = str(
-                error
-            )
+            task_execution.error = str(error)
 
             task_execution.active_attempt_id = None
 
             self._debug(
                 task_id=task.task_id,
                 event="ERROR",
-                message=(
-                    "TaskWorker execution failed."
-                ),
+                message=("TaskWorker execution failed."),
                 attempt_id=attempt_id,
                 error=str(error),
             )
 
             return TaskExecutionResult(
-                execution_id=(
-                    task_execution.execution_id
-                ),
+                execution_id=(task_execution.execution_id),
                 plan_id=task_execution.plan_id,
                 task_id=task_execution.task_id,
-                status=(
-                    TaskExecutionStatus.FAILED
-                ),
-                workflow_id=(
-                    workflow.workflow_id
-                    if workflow is not None
-                    else None
-                ),
+                status=(TaskExecutionStatus.FAILED),
+                workflow_id=(workflow.workflow_id if workflow is not None else None),
                 result=task_execution.result,
                 error=str(error),
                 metadata=task_execution.metadata,

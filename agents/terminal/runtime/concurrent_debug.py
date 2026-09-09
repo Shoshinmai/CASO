@@ -85,7 +85,7 @@ class ConcurrentDebugSession:
         #               runtime/
         #                   concurrent_debug.py
         #
-        # parents[3] => <project_root>
+        # parents[3] -> <project_root>
         # ----------------------------------------------------------
 
         project_root = (
@@ -95,25 +95,84 @@ class ConcurrentDebugSession:
         )
 
         # ----------------------------------------------------------
-        # Build the PowerShell command.
+        # Create a dedicated PowerShell launcher script.
         #
-        # The working directory is explicitly changed to the
-        # project root before Python starts. This makes:
+        # We intentionally do NOT pass the Python command through
+        # wt.exe's -Command argument.
         #
-        #     agents.terminal.runtime.debug_worker_tab
+        # Windows Terminal has its own command-line parser and the
+        # nested PowerShell command was being interpreted incorrectly,
+        # producing:
         #
-        # importable regardless of whether CASO itself is being
-        # launched through a venv, Conda, or system Python.
+        #     0x80070002
+        #
+        # Using -File gives PowerShell ownership of the script and
+        # completely avoids that parsing problem.
         # ----------------------------------------------------------
 
-        powershell_script = (
-            f'Set-Location -LiteralPath '
-            f'"{project_root}"; '
-            f'& "{python_executable}" '
-            f'-m "{module}" '
-            f'--log "{log_path}" '
-            f'--task-id "{task_id}"'
+        launcher_dir = (
+            self.root / "_worker_launchers"
         )
+
+        launcher_dir.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        launcher_path = (
+            launcher_dir
+            / f"{task_id}.ps1"
+        )
+
+        # PowerShell single-quoted strings are used here so paths
+        # containing spaces remain safe.
+        #
+        # Any single quote in a path is escaped by doubling it.
+
+        def ps_quote(value: Path | str) -> str:
+            text = str(value)
+
+            return (
+                "'"
+                + text.replace("'", "''")
+                + "'"
+            )
+
+        launcher_script = "\n".join(
+            [
+                "$ErrorActionPreference = 'Continue'",
+                "",
+                f"Set-Location -LiteralPath {ps_quote(project_root)}",
+                "",
+                f"& {ps_quote(python_executable)} "
+                f"-m {ps_quote(module)} "
+                f"--log {ps_quote(log_path)} "
+                f"--task-id {ps_quote(task_id)}",
+                "",
+                "Write-Host ''",
+                "Write-Host '========================================'",
+                f"Write-Host 'CASO Worker finished: {task_id}'",
+                "Write-Host 'Worker terminal will remain open.'",
+                "Write-Host '========================================'",
+                "Write-Host ''",
+                "Read-Host 'Press ENTER to close this worker tab'",
+            ]
+        )
+
+        launcher_path.write_text(
+            launcher_script,
+            encoding="utf-8",
+        )
+
+        # ----------------------------------------------------------
+        # Launch Windows Terminal.
+        #
+        # wt.exe now only needs to understand:
+        #
+        #     powershell.exe -NoExit -File <script>
+        #
+        # There is no nested -Command string anymore.
+        # ----------------------------------------------------------
 
         command = [
             "wt.exe",
@@ -125,8 +184,8 @@ class ConcurrentDebugSession:
             "-NoExit",
             "-ExecutionPolicy",
             "Bypass",
-            "-Command",
-            powershell_script,
+            "-File",
+            str(launcher_path),
         ]
 
         try:

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from agents.terminal.runtime.concurrent_debug import (
+    ConcurrentDebugSession,
+)
 from agents.terminal.runtime.task_execution import (
     TaskExecutionContext,
     TaskExecutionResult,
@@ -21,20 +24,33 @@ class TaskRunner(AsyncTaskRunner):
     Concrete adapter between AsyncTaskRunner and TaskWorker.
 
     The runner constructs the isolated state snapshot for the
-    assigned task and then delegates execution to TaskWorker.
+    assigned task and delegates execution to TaskWorker.
+
+    The optional ConcurrentDebugSession is only for temporary
+    debugging. It does not participate in execution semantics.
     """
 
     def __init__(
         self,
         *,
         worker: TaskWorker | None = None,
+        debug_session: ConcurrentDebugSession | None = None,
     ) -> None:
+
+        self.debug_session = debug_session
 
         self.worker = (
             worker
             if worker is not None
-            else TaskWorker()
+            else TaskWorker(
+                debug_session=debug_session,
+            )
         )
+
+        # If an externally supplied worker was provided, make
+        # sure the debugging session is propagated to it as well.
+        if debug_session is not None:
+            self.worker.debug_session = debug_session
 
     async def execute_task(
         self,

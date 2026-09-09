@@ -16,7 +16,17 @@ from agents.terminal.runtime.task_runner import (
     AsyncTaskRunner,
 )
 
-from agents.terminal.task_plan.models import TaskItem
+from agents.terminal.runtime.task_runner_impl import (
+    TaskRunner,
+)
+
+from agents.terminal.task_executor.task_worker import (
+    TaskWorker,
+)
+
+from agents.terminal.task_plan.models import (
+    TaskItem,
+)
 
 
 class ConcurrentTaskExecutor:
@@ -47,7 +57,9 @@ class ConcurrentTaskExecutor:
     ) -> None:
 
         if max_concurrency < 1:
-            raise ValueError("max_concurrency must be at least 1.")
+            raise ValueError(
+                "max_concurrency must be at least 1."
+            )
 
         self.runner = runner
         self.max_concurrency = max_concurrency
@@ -59,27 +71,18 @@ class ConcurrentTaskExecutor:
         tasks: list[TaskItem],
         state: dict,
     ) -> list[TaskExecutionResult]:
-        """
-        Execute one explicit task wave concurrently.
-
-        Every task receives its own TaskExecutionContext.
-        TaskRunner creates the task-local state snapshot.
-        """
 
         if not tasks:
             return []
 
-        semaphore = asyncio.Semaphore(self.max_concurrency)
+        semaphore = asyncio.Semaphore(
+            self.max_concurrency
+        )
 
         # ======================================================
         # TEMPORARY CONCURRENT DEBUGGING
         # ======================================================
-        #
-        # The debug session does NOT execute the tasks.
-        #
-        # It only opens PowerShell/Windows Terminal tabs that
-        # observe the real asyncio workers.
-        #
+
         debug_session = ConcurrentDebugSession(
             plan_id=plan_id,
             tasks=tasks,
@@ -90,13 +93,42 @@ class ConcurrentTaskExecutor:
         )
 
         for task in tasks:
+
             debug_session.write(
                 task_id=task.task_id,
                 event="WAVE_START",
-                message=(f"Concurrent wave started with " f"{len(tasks)} task(s)."),
+                message=(
+                    "Concurrent wave started with "
+                    f"{len(tasks)} task(s)."
+                ),
                 plan_id=plan_id,
                 task_count=len(tasks),
             )
+
+        # ======================================================
+        # DEBUG SESSION PROPAGATION
+        # ======================================================
+        #
+        # The wave owns one shared debug session.
+        #
+        # The same session is injected into:
+        #
+        #     TaskRunner
+        #          ↓
+        #     TaskWorker
+        #
+        # This is debugging instrumentation only. It does not
+        # participate in task scheduling or result semantics.
+        # ======================================================
+
+        worker = TaskWorker(
+            debug_session=debug_session,
+        )
+
+        runner = TaskRunner(
+            worker=worker,
+            debug_session=debug_session,
+        )
 
         async def execute_one(
             task: TaskItem,
@@ -116,7 +148,9 @@ class ConcurrentTaskExecutor:
                 debug_session.write(
                     task_id=task.task_id,
                     event="START",
-                    message=("Worker entered concurrent execution."),
+                    message=(
+                        "Worker entered concurrent execution."
+                    ),
                     objective=task.objective,
                 )
 
@@ -125,10 +159,12 @@ class ConcurrentTaskExecutor:
                     debug_session.write(
                         task_id=task.task_id,
                         event="RUNNING",
-                        message=("TaskRunner execution started."),
+                        message=(
+                            "TaskRunner execution started."
+                        ),
                     )
 
-                    result = await self.runner.execute_task(
+                    result = await runner.execute_task(
                         context,
                         task=task,
                         state=state,
@@ -137,7 +173,9 @@ class ConcurrentTaskExecutor:
                     debug_session.write(
                         task_id=task.task_id,
                         event="RESULT",
-                        message=("TaskRunner returned a result."),
+                        message=(
+                            "TaskRunner returned a result."
+                        ),
                         status=result.status.value,
                         execution_id=result.execution_id,
                         workflow_id=result.workflow_id,
@@ -152,9 +190,21 @@ class ConcurrentTaskExecutor:
 
                 except asyncio.CancelledError:
 
-                    context.status = TaskExecutionStatus.CANCELLED
+                    context.status = (
+                        TaskExecutionStatus.CANCELLED
+                    )
 
-                    context.error = "Task execution was cancelled."
+                    context.error = (
+                        "Task execution was cancelled."
+                    )
+
+                    debug_session.write(
+                        task_id=task.task_id,
+                        event="CANCELLED",
+                        message=(
+                            "Worker task was cancelled."
+                        ),
+                    )
 
                     debug_session.close_worker(
                         task_id=task.task_id,
@@ -166,22 +216,28 @@ class ConcurrentTaskExecutor:
 
                 except Exception as error:
 
-                    context.status = TaskExecutionStatus.FAILED
+                    context.status = (
+                        TaskExecutionStatus.FAILED
+                    )
 
                     context.error = str(error)
 
                     debug_session.write(
                         task_id=task.task_id,
                         event="ERROR",
-                        message=("TaskRunner raised an exception."),
+                        message=(
+                            "TaskRunner raised an exception."
+                        ),
                         error=str(error),
                     )
 
                     result = TaskExecutionResult(
-                        execution_id=(context.execution_id),
+                        execution_id=context.execution_id,
                         plan_id=context.plan_id,
                         task_id=context.task_id,
-                        status=(TaskExecutionStatus.FAILED),
+                        status=(
+                            TaskExecutionStatus.FAILED
+                        ),
                         workflow_id=(
                             context.workflow.workflow_id
                             if context.workflow is not None
@@ -204,12 +260,11 @@ class ConcurrentTaskExecutor:
         # REAL CONCURRENT EXECUTION
         # ======================================================
         #
-        # Nothing about the actual concurrency mechanism has
-        # changed.
+        # The actual concurrency mechanism remains unchanged.
         #
-        # Every execute_one() coroutine is still scheduled
-        # concurrently through asyncio.gather().
-        #
+        # Every execute_one() coroutine is scheduled concurrently
+        # through asyncio.gather().
+        # ======================================================
 
         raw_results = await asyncio.gather(
             *(execute_one(task) for task in tasks),
@@ -228,7 +283,9 @@ class ConcurrentTaskExecutor:
                 TaskExecutionResult,
             ):
 
-                results.append(raw_result)
+                results.append(
+                    raw_result
+                )
 
                 continue
 
@@ -242,8 +299,12 @@ class ConcurrentTaskExecutor:
                         execution_id="",
                         plan_id=plan_id,
                         task_id=task.task_id,
-                        status=(TaskExecutionStatus.CANCELLED),
-                        error=("Task execution was cancelled."),
+                        status=(
+                            TaskExecutionStatus.CANCELLED
+                        ),
+                        error=(
+                            "Task execution was cancelled."
+                        ),
                     )
                 )
 
@@ -259,7 +320,9 @@ class ConcurrentTaskExecutor:
                         execution_id="",
                         plan_id=plan_id,
                         task_id=task.task_id,
-                        status=(TaskExecutionStatus.FAILED),
+                        status=(
+                            TaskExecutionStatus.FAILED
+                        ),
                         error=str(raw_result),
                     )
                 )
@@ -273,7 +336,7 @@ class ConcurrentTaskExecutor:
             )
 
         # ======================================================
-        # TEMPORARY DEBUGGING: print wave completion
+        # TEMPORARY DEBUGGING: WAVE RESULT COLLECTION
         # ======================================================
 
         for result in results:
@@ -281,7 +344,10 @@ class ConcurrentTaskExecutor:
             debug_session.write(
                 task_id=result.task_id,
                 event="RECONCILED",
-                message=("Task result collected by " "ConcurrentTaskExecutor."),
+                message=(
+                    "Task result collected by "
+                    "ConcurrentTaskExecutor."
+                ),
                 status=result.status.value,
             )
 

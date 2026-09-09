@@ -66,19 +66,49 @@ class ConcurrentDebugSession:
 
         log_path = self.log_path(task_id)
 
-        python_executable = sys.executable
+        python_executable = Path(
+            sys.executable
+        ).resolve()
 
-        module = "agents.terminal.runtime.debug_worker_tab"
+        module = (
+            "agents.terminal.runtime.debug_worker_tab"
+        )
 
         # ----------------------------------------------------------
-        # Build a PowerShell command.
+        # Resolve the CASO project root from this source file.
         #
-        # PowerShell stays alive after the Python monitor exits.
-        # The monitor itself waits for ENTER after DONE, so the
-        # debugging window remains available for inspection.
+        # concurrent_debug.py:
+        #
+        #   <project_root>
+        #       agents/
+        #           terminal/
+        #               runtime/
+        #                   concurrent_debug.py
+        #
+        # parents[3] => <project_root>
         # ----------------------------------------------------------
 
-        python_command = (
+        project_root = (
+            Path(__file__)
+            .resolve()
+            .parents[3]
+        )
+
+        # ----------------------------------------------------------
+        # Build the PowerShell command.
+        #
+        # The working directory is explicitly changed to the
+        # project root before Python starts. This makes:
+        #
+        #     agents.terminal.runtime.debug_worker_tab
+        #
+        # importable regardless of whether CASO itself is being
+        # launched through a venv, Conda, or system Python.
+        # ----------------------------------------------------------
+
+        powershell_script = (
+            f'Set-Location -LiteralPath '
+            f'"{project_root}"; '
             f'& "{python_executable}" '
             f'-m "{module}" '
             f'--log "{log_path}" '
@@ -96,14 +126,16 @@ class ConcurrentDebugSession:
             "-ExecutionPolicy",
             "Bypass",
             "-Command",
-            python_command,
+            powershell_script,
         ]
 
         try:
 
             subprocess.Popen(
                 command,
-                creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP),
+                creationflags=(
+                    subprocess.CREATE_NEW_PROCESS_GROUP
+                ),
             )
 
         except FileNotFoundError:

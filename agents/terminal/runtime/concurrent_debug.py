@@ -66,13 +66,9 @@ class ConcurrentDebugSession:
 
         log_path = self.log_path(task_id)
 
-        python_executable = Path(
-            sys.executable
-        ).resolve()
+        python_executable = Path(sys.executable).resolve()
 
-        module = (
-            "agents.terminal.runtime.debug_worker_tab"
-        )
+        module = "agents.terminal.runtime.debug_worker_tab"
 
         # ----------------------------------------------------------
         # Resolve the CASO project root from this source file.
@@ -88,11 +84,7 @@ class ConcurrentDebugSession:
         # parents[3] -> <project_root>
         # ----------------------------------------------------------
 
-        project_root = (
-            Path(__file__)
-            .resolve()
-            .parents[3]
-        )
+        project_root = Path(__file__).resolve().parents[3]
 
         # ----------------------------------------------------------
         # Create a dedicated PowerShell launcher script.
@@ -110,19 +102,14 @@ class ConcurrentDebugSession:
         # completely avoids that parsing problem.
         # ----------------------------------------------------------
 
-        launcher_dir = (
-            self.root / "_worker_launchers"
-        )
+        launcher_dir = self.root / "_worker_launchers"
 
         launcher_dir.mkdir(
             parents=True,
             exist_ok=True,
         )
 
-        launcher_path = (
-            launcher_dir
-            / f"{task_id}.ps1"
-        )
+        launcher_path = launcher_dir / f"{task_id}.ps1"
 
         # PowerShell single-quoted strings are used here so paths
         # containing spaces remain safe.
@@ -132,11 +119,7 @@ class ConcurrentDebugSession:
         def ps_quote(value: Path | str) -> str:
             text = str(value)
 
-            return (
-                "'"
-                + text.replace("'", "''")
-                + "'"
-            )
+            return "'" + text.replace("'", "''") + "'"
 
         launcher_script = "\n".join(
             [
@@ -182,7 +165,6 @@ class ConcurrentDebugSession:
             f"CASO Worker | {task_id}",
             "powershell.exe",
             "-NoLogo",
-            "-NoExit",
             "-ExecutionPolicy",
             "Bypass",
             "-File",
@@ -193,9 +175,7 @@ class ConcurrentDebugSession:
 
             subprocess.Popen(
                 command,
-                creationflags=(
-                    subprocess.CREATE_NEW_PROCESS_GROUP
-                ),
+                creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP),
             )
 
         except FileNotFoundError:

@@ -11,6 +11,7 @@ from agents.terminal.models import (
 from agents.terminal.result_processing.models import (
     ArtifactAction,
 )
+from agents.terminal.result_processing.state_mutator import mutate_state
 from agents.terminal.runtime.concurrent_reconciliation import (
     ConcurrentReconciliationResult,
 )
@@ -239,6 +240,26 @@ class TaskResultReconciler:
             persisted_artifact_ids.extend(
                 reconciliation["persisted_artifact_ids"]
             )
+        
+        # ======================================================
+        # 2B. Reconcile Active Task Memory
+        # ======================================================
+        #
+        # RuntimeProcessingResult is intentionally pure.
+        # Workers only return MemoryUpdateProposal objects.
+        #
+        # ActiveTaskMemory is mutated centrally after the entire
+        # execution wave has been collected and reconciled.
+        #
+        # This preserves concurrent worker isolation while
+        # allowing all task-local observations to become part of
+        # the authoritative active runtime context.
+        # ======================================================
+
+        TaskResultReconciler._reconcile_active_memory(
+            results=results,
+            state=state,
+        )
 
         # ======================================================
         # 3. Recompute readiness AFTER the entire wave
@@ -378,6 +399,112 @@ class TaskResultReconciler:
         )
 
         return reconciliation
+    
+    @staticmethod
+    def _reconcile_active_memory(
+        *,
+        results: list[TaskExecutionResult],
+        state: dict,
+    ) -> None:
+        """
+        Apply task-local MemoryUpdateProposal objects to the
+        authoritative ActiveTaskMemory.
+
+        RuntimeProcessingResult remains pure. Workers never mutate
+        central ActiveTaskMemory directly.
+
+        Every memory proposal produced during the completed
+        execution wave is applied centrally in deterministic result
+        order.
+
+        The actual mutation and memory-quality validation remain
+        owned by the canonical result-processing state mutator.
+        """
+
+        active_memory = state.get(
+            "active_memory",
+        )
+
+        if active_memory is None:
+            raise ValueError(
+                "Cannot reconcile active memory because "
+                "TerminalState does not contain active_memory."
+            )
+
+        print(
+            "\n[ACTIVE MEMORY] "
+            "Beginning wave memory reconciliation."
+        )
+
+        total_processing_results = 0
+        total_memory_proposals = 0
+
+        for result in results:
+
+            print(
+                f"[ACTIVE MEMORY] "
+                f"Task={result.task_id} | "
+                f"processing_results="
+                f"{len(result.processing_results)}"
+            )
+
+            for index, processing_result in enumerate(
+                result.processing_results
+            ):
+                total_processing_results += 1
+
+                proposal = (
+                    processing_result.memory_update
+                )
+
+                if proposal is None:
+                    print(
+                        f"[ACTIVE MEMORY] "
+                        f"Task={result.task_id} | "
+                        f"result={index} | "
+                        "no memory proposal"
+                    )
+
+                    continue
+
+                total_memory_proposals += 1
+
+                print(
+                    f"[ACTIVE MEMORY] "
+                    f"Applying proposal | "
+                    f"task={result.task_id} | "
+                    f"result={index} | "
+                    f"facts="
+                    f"{len(proposal.known_facts)} | "
+                    f"resources="
+                    f"{len(proposal.discovered_resources)} | "
+                    f"completed="
+                    f"{len(proposal.completed_work)} | "
+                    f"unresolved="
+                    f"{len(proposal.unresolved_needs)}"
+                )
+
+                mutate_state(
+                    state=state,
+                    proposal=proposal,
+                )
+
+        print(
+            "[ACTIVE MEMORY] "
+            "Wave memory reconciliation complete | "
+            f"processing_results="
+            f"{total_processing_results} | "
+            f"proposals="
+            f"{total_memory_proposals} | "
+            f"facts="
+            f"{len(active_memory.known_facts)} | "
+            f"resources="
+            f"{len(active_memory.discovered_resources)} | "
+            f"completed="
+            f"{len(active_memory.completed_work)} | "
+            f"unresolved="
+            f"{len(active_memory.unresolved_needs)}"
+        )
 
     @staticmethod
     def _reconcile_artifacts(

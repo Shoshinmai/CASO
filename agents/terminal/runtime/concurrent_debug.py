@@ -35,16 +35,9 @@ class ConcurrentDebugSession:
 
         self.plan_id = plan_id
 
-        self.run_id = (
-            f"{plan_id}-"
-            f"{uuid.uuid4().hex[:8]}"
-        )
+        self.run_id = f"{plan_id}-" f"{uuid.uuid4().hex[:8]}"
 
-        self.root = (
-            Path(tempfile.gettempdir())
-            / "caso_concurrent_debug"
-            / self.run_id
-        )
+        self.root = Path(tempfile.gettempdir()) / "caso_concurrent_debug" / self.run_id
 
         self.root.mkdir(
             parents=True,
@@ -54,26 +47,16 @@ class ConcurrentDebugSession:
         self._locks: dict[str, threading.Lock] = {}
 
         for task in tasks:
-            self._locks[task.task_id] = (
-                threading.Lock()
-            )
+            self._locks[task.task_id] = threading.Lock()
 
     def log_path(
         self,
         task_id: str,
     ) -> Path:
 
-        safe_task_id = (
-            task_id
-            .replace("/", "_")
-            .replace("\\", "_")
-            .replace(":", "_")
-        )
+        safe_task_id = task_id.replace("/", "_").replace("\\", "_").replace(":", "_")
 
-        return (
-            self.root
-            / f"{safe_task_id}.jsonl"
-        )
+        return self.root / f"{safe_task_id}.jsonl"
 
     def open_worker_tab(
         self,
@@ -81,58 +64,56 @@ class ConcurrentDebugSession:
         task_id: str,
     ) -> None:
 
-        log_path = self.log_path(
-            task_id
-        )
+        log_path = self.log_path(task_id)
 
-        python_executable = (
-            sys.executable
-        )
+        python_executable = sys.executable
 
-        module = (
-            "agents.terminal.runtime.debug_worker_tab"
-        )
+        module = "agents.terminal.runtime.debug_worker_tab"
 
-        # Windows Terminal.
+        # ----------------------------------------------------------
+        # Build a PowerShell command.
         #
-        # The tab runs the monitor only.
-        # The actual worker remains in the parent
-        # Python process.
+        # PowerShell stays alive after the Python monitor exits.
+        # The monitor itself waits for ENTER after DONE, so the
+        # debugging window remains available for inspection.
+        # ----------------------------------------------------------
+
+        python_command = (
+            f'& "{python_executable}" '
+            f'-m "{module}" '
+            f'--log "{log_path}" '
+            f'--task-id "{task_id}"'
+        )
+
         command = [
             "wt.exe",
             "new-tab",
             "--title",
             f"CASO Worker | {task_id}",
-            python_executable,
-            "-m",
-            module,
-            "--log",
-            str(log_path),
-            "--task-id",
-            task_id,
+            "powershell.exe",
+            "-NoLogo",
+            "-NoExit",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            python_command,
         ]
 
         try:
 
             subprocess.Popen(
                 command,
-                creationflags=(
-                    subprocess.CREATE_NEW_PROCESS_GROUP
-                ),
+                creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP),
             )
 
         except FileNotFoundError:
 
-            # Windows Terminal may not be available
-            # as wt.exe in some environments.
-            #
-            # Do not break actual execution merely because
-            # the temporary visual debugger cannot start.
             print(
                 "[CONCURRENT DEBUG] "
                 "wt.exe was not found. "
                 f"Worker {task_id} will execute normally "
-                "without a debug tab."
+                "without a debug tab.",
+                flush=True,
             )
 
     def open_tabs(
@@ -157,20 +138,14 @@ class ConcurrentDebugSession:
     ) -> None:
 
         payload = {
-            "timestamp": (
-                datetime.now(
-                    timezone.utc
-                ).isoformat()
-            ),
+            "timestamp": (datetime.now(timezone.utc).isoformat()),
             "event": event,
             "task_id": task_id,
             "message": message,
             **metadata,
         }
 
-        path = self.log_path(
-            task_id
-        )
+        path = self.log_path(task_id)
 
         lock = self._locks.setdefault(
             task_id,
@@ -205,9 +180,7 @@ class ConcurrentDebugSession:
         self.write(
             task_id=task_id,
             event="DONE",
-            message=(
-                f"Worker completed with status={status}"
-            ),
+            message=(f"Worker completed with status={status}"),
             status=status,
             error=error,
         )

@@ -467,31 +467,61 @@ class TaskWorker:
         except Exception as error:
 
             # --------------------------------------------------
-            # Attempt lifecycle
+            # Finalize the task-local execution attempt whenever
+            # an attempt was actually created.
+            #
+            # A processed result is optional. If the worker
+            # fails before producing one, finish_attempt() still
+            # records a terminal FAILED attempt.
             # --------------------------------------------------
 
-            if attempt_id is not None and processing_results:
+            if attempt_id is not None:
 
                 try:
+
+                    final_processing_result = (
+                        processing_results[-1] if processing_results else None
+                    )
 
                     ExecutionMemoryManager.finish_attempt(
                         execution_memory=state["execution_memory"],
                         attempt_id=attempt_id,
-                        runtime_result=(processing_results[-1]),
+                        runtime_result=(final_processing_result),
                         success=False,
                         error=str(error),
                     )
 
                 except ValueError:
-                    # Do not mask the original worker error.
+                    # Never mask the original worker failure.
                     pass
+
+            # --------------------------------------------------
+            # Recover the EXACT attempt by ID.
+            #
+            # Do not use attempts[-1] because concurrent workers
+            # must never rely on list position for ownership.
+            # --------------------------------------------------
 
             completed_attempt = None
 
-            if attempt_id is not None and state["execution_memory"].attempts:
-                completed_attempt = state["execution_memory"].attempts[-1]
+            if attempt_id is not None:
+
+                for attempt in state["execution_memory"].attempts:
+
+                    if attempt.attempt_id == attempt_id:
+
+                        completed_attempt = attempt
+                        break
+
+            # --------------------------------------------------
+            # Clear task-local active attempt pointer.
+            # --------------------------------------------------
 
             task_execution.active_attempt_id = None
+
+            # --------------------------------------------------
+            # Mark task execution as failed.
+            # --------------------------------------------------
 
             task_execution.status = TaskExecutionStatus.FAILED
 
@@ -503,6 +533,28 @@ class TaskWorker:
                     result.model_dump() for result in processing_results
                 ],
             }
+
+            print("\n========== EXECUTION MEMORY ==========")
+
+            print(f"TASK ID: {task.task_id}")
+
+            print(f"ATTEMPT ID: {attempt_id}")
+
+            print(f"PROCESSING RESULTS: " f"{len(processing_results)}")
+
+            print("STATUS: finalized")
+
+            if completed_attempt is not None:
+
+                print(f"FINAL ATTEMPT STATUS: " f"{completed_attempt.status.value}")
+
+            else:
+
+                print("FINAL ATTEMPT STATUS: unavailable")
+
+            # --------------------------------------------------
+            # Return terminal task result.
+            # --------------------------------------------------
 
             return TaskExecutionResult(
                 execution_id=(task_execution.execution_id),

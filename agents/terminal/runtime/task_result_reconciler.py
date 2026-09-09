@@ -11,6 +11,9 @@ from agents.terminal.models import (
 from agents.terminal.result_processing.models import (
     ArtifactAction,
 )
+from agents.terminal.runtime.concurrent_reconciliation import (
+    ConcurrentReconciliationResult,
+)
 from agents.terminal.runtime.task_execution import (
     TaskExecutionResult,
     TaskExecutionStatus,
@@ -45,6 +48,10 @@ class TaskResultReconciler:
     - artifact references
     - artifact ↔ execution-attempt associations
     - dependency readiness
+
+    For concurrent execution, reconciliation happens for the
+    complete execution wave rather than for individual worker
+    completion events.
     """
 
     @staticmethod
@@ -53,18 +60,28 @@ class TaskResultReconciler:
         plan: TaskPlan,
         results: list[TaskExecutionResult],
         state: dict,
-    ) -> TaskPlan:
+    ) -> ConcurrentReconciliationResult:
         """
         Reconcile one completed execution wave.
 
-        The entire result wave is first applied to authoritative
-        central state. Dependency readiness is updated only after
-        the complete wave has been reconciled.
+        The complete result wave is applied to authoritative
+        central state before dependency readiness is recomputed.
 
-        Artifact persistence is deterministic and centralized.
+        No individual result is allowed to release dependent work
+        before the entire wave has been reconciled.
 
-        Returns the same mutated TaskPlan instance.
+        Returns a deterministic summary describing what was
+        reconciled.
         """
+
+        # ======================================================
+        # Wave identity
+        # ======================================================
+
+        wave_task_ids = [
+            result.task_id
+            for result in results
+        ]
 
         print(
             f"\n[RECONCILER] "
@@ -75,8 +92,7 @@ class TaskResultReconciler:
 
         print(
             "[RECONCILER] "
-            f"Result order: "
-            f"{[result.task_id for result in results]}"
+            f"Wave tasks: {wave_task_ids}"
         )
 
         # ------------------------------------------------------
@@ -97,8 +113,9 @@ class TaskResultReconciler:
             if result.plan_id != plan.plan_id:
                 raise ValueError(
                     "Cannot reconcile a result belonging to a "
-                    f"different plan. Expected '{plan.plan_id}', "
-                    f"received '{result.plan_id}'."
+                    "different plan. Expected "
+                    f"'{plan.plan_id}', received "
+                    f"'{result.plan_id}'."
                 )
 
         # ------------------------------------------------------
@@ -106,7 +123,7 @@ class TaskResultReconciler:
         # ------------------------------------------------------
 
         artifact_references = state.get(
-            "artifact_references"
+            "artifact_references",
         )
 
         if artifact_references is None:
@@ -116,7 +133,7 @@ class TaskResultReconciler:
             )
 
         execution_memory = state.get(
-            "execution_memory"
+            "execution_memory",
         )
 
         if execution_memory is None:
@@ -125,12 +142,25 @@ class TaskResultReconciler:
                 "does not contain execution_memory."
             )
 
-        # ------------------------------------------------------
-        # Apply all terminal execution outcomes.
+        # ======================================================
+        # Tracking for the wave summary
+        # ======================================================
+
+        merged_attempt_ids: list[str] = []
+
+        persisted_artifact_ids: list[str] = []
+
+        # ======================================================
+        # 1. Apply all terminal execution outcomes
+        # ======================================================
         #
-        # Do not update dependency readiness inside this loop.
-        # A whole execution wave must be reconciled first.
-        # ------------------------------------------------------
+        # IMPORTANT:
+        #
+        # Readiness is intentionally NOT updated here.
+        #
+        # Every result in the wave must first reach its terminal
+        # TaskPlan state.
+        # ======================================================
 
         for result in results:
 
@@ -177,42 +207,55 @@ class TaskResultReconciler:
                 f"status '{result.status}'."
             )
 
-        # ------------------------------------------------------
-        # Persist all artifact decisions from the completed wave.
+        # ======================================================
+        # 2. Reconcile execution memory + artifacts
+        # ======================================================
         #
-        # This happens centrally AFTER all workers have returned.
+        # This remains centralized.
         #
-        # Workers only produced ArtifactDecision objects.
-        # ------------------------------------------------------
+        # Each result carries its own execution_attempt_id, so
+        # reconciliation never depends on completion order or
+        # ExecutionMemoryManager.current_attempt().
+        # ======================================================
 
         print(
             "[RECONCILER] "
-            "Beginning artifact reconciliation."
+            "Beginning artifact/memory reconciliation."
         )
 
         for result in results:
 
-            TaskResultReconciler._reconcile_artifacts(
-                result=result,
-                state=state,
+            reconciliation = (
+                TaskResultReconciler._reconcile_artifacts(
+                    result=result,
+                    state=state,
+                )
             )
 
-        # ------------------------------------------------------
-        # Recompute readiness after the entire wave is applied.
-        # ------------------------------------------------------
+            merged_attempt_ids.extend(
+                reconciliation["merged_attempt_ids"]
+            )
+
+            persisted_artifact_ids.extend(
+                reconciliation["persisted_artifact_ids"]
+            )
+
+        # ======================================================
+        # 3. Recompute readiness AFTER the entire wave
+        # ======================================================
 
         print(
             "[RECONCILER] "
-            "Updating task readiness."
+            "Updating task readiness after complete wave."
         )
 
         TaskPlanManager.update_task_readiness(
             plan=plan,
         )
 
-        # ------------------------------------------------------
-        # Mark tasks blocked by failed/cancelled dependencies.
-        # ------------------------------------------------------
+        # ======================================================
+        # 4. Mark tasks blocked by failed/cancelled dependencies
+        # ======================================================
 
         blocked_tasks = (
             TaskPlanManager.get_blocked_tasks(
@@ -237,9 +280,34 @@ class TaskResultReconciler:
                 ),
             )
 
-        # ------------------------------------------------------
-        # Recompute plan terminal state.
-        # ------------------------------------------------------
+        # ======================================================
+        # 5. Compute final READY state for the reconciled wave
+        # ======================================================
+        #
+        # This happens after blocking as well, so the summary
+        # represents the actual state that the next coordinator
+        # iteration will observe.
+        # ======================================================
+
+        ready_tasks = (
+            TaskPlanManager.get_ready_tasks(
+                plan=plan,
+            )
+        )
+
+        newly_ready_task_ids = [
+            task.task_id
+            for task in ready_tasks
+        ]
+
+        blocked_task_ids = [
+            task.task_id
+            for task in blocked_tasks
+        ]
+
+        # ======================================================
+        # 6. Recompute plan terminal state
+        # ======================================================
 
         if TaskPlanManager.is_plan_complete(
             plan=plan,
@@ -253,32 +321,81 @@ class TaskResultReconciler:
                 plan=plan,
             )
 
-        print(
-            f"[RECONCILER] "
-            f"Wave reconciliation complete | "
-            f"plan={plan.plan_id}"
+        # ======================================================
+        # 7. Build reconciliation result
+        # ======================================================
+
+        reconciliation = ConcurrentReconciliationResult(
+            wave_task_ids=wave_task_ids,
+            reconciled_task_ids=[
+                result.task_id
+                for result in results
+            ],
+            newly_ready_task_ids=newly_ready_task_ids,
+            blocked_task_ids=blocked_task_ids,
+            merged_attempt_ids=merged_attempt_ids,
+            persisted_artifact_ids=persisted_artifact_ids,
         )
 
-        return plan
+        print(
+            "\n[RECONCILER] "
+            "Wave reconciliation complete."
+        )
+
+        print(
+            f"[RECONCILER] "
+            f"wave={reconciliation.wave_task_ids}"
+        )
+
+        print(
+            f"[RECONCILER] "
+            f"reconciled="
+            f"{reconciliation.reconciled_task_ids}"
+        )
+
+        print(
+            f"[RECONCILER] "
+            f"ready="
+            f"{reconciliation.newly_ready_task_ids}"
+        )
+
+        print(
+            f"[RECONCILER] "
+            f"blocked="
+            f"{reconciliation.blocked_task_ids}"
+        )
+
+        print(
+            f"[RECONCILER] "
+            f"merged_attempts="
+            f"{reconciliation.merged_attempt_ids}"
+        )
+
+        print(
+            f"[RECONCILER] "
+            f"artifacts="
+            f"{reconciliation.persisted_artifact_ids}"
+        )
+
+        return reconciliation
 
     @staticmethod
     def _reconcile_artifacts(
         *,
         result: TaskExecutionResult,
         state: dict,
-    ) -> None:
+    ) -> dict[str, list[str]]:
         """
         Reconcile task-local execution memory and artifacts into
         authoritative central runtime state.
 
-        Ordering is important:
+        Ordering:
 
             1. merge the completed execution attempt
             2. persist artifact candidates
             3. associate persisted artifact IDs with that attempt
 
-        This guarantees that concurrent workers never depend on
-        completion order or on a global "current attempt".
+        Concurrent workers never depend on completion order.
         """
 
         artifact_references = state[
@@ -289,6 +406,10 @@ class TaskResultReconciler:
             "execution_memory"
         ]
 
+        merged_attempt_ids: list[str] = []
+
+        persisted_artifact_ids: list[str] = []
+
         print(
             f"[ARTIFACT] "
             f"Processing task | "
@@ -298,9 +419,9 @@ class TaskResultReconciler:
             f"{len(result.processing_results)}"
         )
 
-        # ------------------------------------------------------
+        # ======================================================
         # 1. Merge the worker's completed execution attempt.
-        # ------------------------------------------------------
+        # ======================================================
 
         attempt = result.execution_attempt
 
@@ -313,7 +434,10 @@ class TaskResultReconciler:
                 f"attempt={result.execution_attempt_id}"
             )
 
+            # --------------------------------------------------
             # Defensive identity check.
+            # --------------------------------------------------
+
             if (
                 result.execution_attempt_id is not None
                 and attempt.attempt_id
@@ -333,11 +457,15 @@ class TaskResultReconciler:
                 attempt=attempt,
             )
 
+            merged_attempt_ids.append(
+                attempt.attempt_id
+            )
+
             print(
                 f"[MEMORY] "
                 f"Attempt merged | "
                 f"task={result.task_id} | "
-                f"attempt={result.execution_attempt_id}"
+                f"attempt={attempt.attempt_id}"
             )
 
         else:
@@ -349,9 +477,9 @@ class TaskResultReconciler:
                 f"attempt={result.execution_attempt_id}"
             )
 
-        # ------------------------------------------------------
+        # ======================================================
         # 2. Persist stored artifact candidates.
-        # ------------------------------------------------------
+        # ======================================================
 
         for processing_result in (
             result.processing_results
@@ -409,6 +537,10 @@ class TaskResultReconciler:
                     "task_id": result.task_id,
                     "execution_id": result.execution_id,
                 },
+            )
+
+            persisted_artifact_ids.append(
+                artifact_id
             )
 
             print(
@@ -469,9 +601,9 @@ class TaskResultReconciler:
                     f"artifact_id={artifact_id}"
                 )
 
-            # --------------------------------------------------
+            # ==================================================
             # 3. Associate artifact with exact attempt.
-            # --------------------------------------------------
+            # ==================================================
 
             print(
                 f"[MEMORY] "
@@ -494,6 +626,11 @@ class TaskResultReconciler:
                 f"attempt={result.execution_attempt_id} | "
                 f"artifact={artifact_id}"
             )
+
+        return {
+            "merged_attempt_ids": merged_attempt_ids,
+            "persisted_artifact_ids": persisted_artifact_ids,
+        }
 
     @staticmethod
     def _associate_artifact_with_attempt(

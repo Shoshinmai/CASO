@@ -70,11 +70,14 @@ class TaskExecutionCoordinator:
         Execute the task plan wave-by-wave until completion or
         until no further executable work exists.
 
-        Returns the authoritative TaskPlan together with all terminal
-        TaskExecutionResults produced during this coordinator run.
+        Returns the authoritative TaskPlan together with all
+        terminal TaskExecutionResults produced during this
+        coordinator run.
         """
 
-        all_task_results: list[TaskExecutionResult] = []
+        all_task_results: list[
+            TaskExecutionResult
+        ] = []
 
         # ------------------------------------------------------
         # Establish initial readiness.
@@ -93,6 +96,10 @@ class TaskExecutionCoordinator:
             if TaskPlanManager.is_plan_complete(
                 plan=plan,
             ):
+                print(
+                    "\n[COORDINATOR] "
+                    "Plan already complete."
+                )
                 break
 
             # --------------------------------------------------
@@ -102,21 +109,29 @@ class TaskExecutionCoordinator:
             # configured concurrency limit.
             # --------------------------------------------------
 
-            ready_tasks = TaskPlanManager.get_ready_tasks(
-                plan=plan,
+            ready_tasks = (
+                TaskPlanManager.get_ready_tasks(
+                    plan=plan,
+                )
+            )
+
+            print(
+                "\n[COORDINATOR] "
+                f"READY tasks: "
+                f"{[task.task_id for task in ready_tasks]}"
             )
 
             # --------------------------------------------------
             # No READY work.
-            #
-            # In this coordinator, each wave is fully awaited.
-            # Therefore, no active workers remain here and there
-            # is no valid next wave to execute.
-            #
-            # The plan has reached a stable execution boundary.
             # --------------------------------------------------
 
             if not ready_tasks:
+
+                print(
+                    "[COORDINATOR] "
+                    "No READY tasks remain."
+                )
+
                 break
 
             # --------------------------------------------------
@@ -126,13 +141,28 @@ class TaskExecutionCoordinator:
             # IN_PROGRESS before worker execution begins.
             # --------------------------------------------------
 
-            execution_wave = TaskPlanManager.start_ready_tasks(
-                plan=plan,
-                limit=len(ready_tasks),
+            execution_wave = (
+                TaskPlanManager.start_ready_tasks(
+                    plan=plan,
+                    limit=len(ready_tasks),
+                )
             )
 
             if not execution_wave:
+
+                print(
+                    "[COORDINATOR] "
+                    "No tasks were admitted into the wave."
+                )
+
                 break
+
+            print(
+                "\n[COORDINATOR] "
+                f"Starting execution wave | "
+                f"tasks="
+                f"{[task.task_id for task in execution_wave]}"
+            )
 
             # --------------------------------------------------
             # Execute the entire wave concurrently.
@@ -153,15 +183,64 @@ class TaskExecutionCoordinator:
                 results,
             )
 
+            print(
+                "\n[COORDINATOR] "
+                f"Wave execution complete | "
+                f"results="
+                f"{[result.task_id for result in results]}"
+            )
+
             # --------------------------------------------------
             # Reconcile all results only after the complete wave
             # has finished.
+            #
+            # D.7.4:
+            #
+            # The reconciler now returns an explicit summary of
+            # the central state transition caused by this wave.
             # --------------------------------------------------
 
-            TaskResultReconciler.reconcile(
-                plan=plan,
-                results=results,
-                state=state,
+            reconciliation = (
+                TaskResultReconciler.reconcile(
+                    plan=plan,
+                    results=results,
+                    state=state,
+                )
+            )
+
+            print(
+                "\n[COORDINATOR] "
+                "Wave reconciliation complete."
+            )
+
+            print(
+                "[COORDINATOR] "
+                f"Reconciled: "
+                f"{reconciliation.reconciled_task_ids}"
+            )
+
+            print(
+                "[COORDINATOR] "
+                f"New READY: "
+                f"{reconciliation.newly_ready_task_ids}"
+            )
+
+            print(
+                "[COORDINATOR] "
+                f"Blocked: "
+                f"{reconciliation.blocked_task_ids}"
+            )
+
+            print(
+                "[COORDINATOR] "
+                f"Merged attempts: "
+                f"{reconciliation.merged_attempt_ids}"
+            )
+
+            print(
+                "[COORDINATOR] "
+                f"Persisted artifacts: "
+                f"{reconciliation.persisted_artifact_ids}"
             )
 
             # --------------------------------------------------

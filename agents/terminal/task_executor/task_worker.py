@@ -496,14 +496,17 @@ class TaskWorker:
             )
 
             return TaskExecutionResult(
-                execution_id=(task_execution.execution_id),
+                execution_id=task_execution.execution_id,
+                execution_attempt_id=attempt_id,
+                execution_attempt=completed_attempt,
                 plan_id=task_execution.plan_id,
                 task_id=task_execution.task_id,
                 status=task_execution.status,
-                workflow_id=(workflow.workflow_id),
+                workflow_id=workflow.workflow_id,
                 result=task_execution.result,
                 error=task_execution.error,
                 metadata=task_execution.metadata,
+                processing_results=processing_results,
             )
 
         except asyncio.CancelledError:
@@ -538,12 +541,26 @@ class TaskWorker:
             )
 
             return TaskExecutionResult(
-                execution_id=(task_execution.execution_id),
+                execution_id=task_execution.execution_id,
+                execution_attempt_id=attempt_id,
+                execution_attempt=(
+                    next(
+                        (
+                            attempt
+                            for attempt in state["execution_memory"].attempts
+                            if attempt.attempt_id == attempt_id
+                        ),
+                        None,
+                    )
+                    if attempt_id is not None
+                    else None
+                ),
                 plan_id=task_execution.plan_id,
                 task_id=task_execution.task_id,
-                status=(TaskExecutionStatus.FAILED),
+                status=TaskExecutionStatus.FAILED,
                 workflow_id=(workflow.workflow_id if workflow is not None else None),
                 result=task_execution.result,
                 error=str(error),
                 metadata=task_execution.metadata,
+                processing_results=processing_results,
             )

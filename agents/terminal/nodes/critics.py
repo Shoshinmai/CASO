@@ -8,7 +8,7 @@ from agents.terminal.prompts.critics_prompt import TERMINAL_CRITIC_PROMPT
 from llm.llmclient import call_nvidia
 
 
-def terminal_critic_node(state):
+async def terminal_critic_node(state):
     """
     Evaluate the current task objective and produce a
     structured CriticOutput.
@@ -17,20 +17,20 @@ def terminal_critic_node(state):
     It does not execute the resulting decision.
     """
 
+    print("\n========== ACTIVE MEMORY ==========")
+    print(state["active_memory"])
+    
     critic_context = build_critic_context(
         state=state,
     )
 
-    print("\n========== CRITIC CONTEXT ==========")
-    print(critic_context.model_dump())
-
     prompt = TERMINAL_CRITIC_PROMPT.format(**critic_context.model_dump())
 
-    critic_output = call_nvidia(
+    critic_output = await call_nvidia(
         prompt,
-        # "nvidia/nemotron-3-super-120b-a12b",
+        "nvidia/nemotron-3-super-120b-a12b",
         # "nvidia/nemotron-3-ultra-550b-a55b",
-        "openai/gpt-oss-20b",
+        # "openai/gpt-oss-20b",
         subagent=True,
         state_model=CriticOutput,
     )

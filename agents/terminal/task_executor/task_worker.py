@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 from typing import Any
 
 from agents.terminal.memory.execution_manager import (
@@ -76,7 +77,9 @@ class TaskWorker:
     ) -> None:
 
         self.workflow_runtime = (
-            workflow_runtime if workflow_runtime is not None else WorkflowRuntime()
+            workflow_runtime
+            if workflow_runtime is not None
+            else WorkflowRuntime()
         )
 
         self.debug_session = debug_session
@@ -129,6 +132,11 @@ class TaskWorker:
 
         attempt_id: str | None = None
 
+        # This is deliberately kept separate from the original
+        # live attempt object. It will contain a detached,
+        # finalized record for TaskExecutionResult.
+        finalized_attempt = None
+
         try:
 
             # ==================================================
@@ -140,7 +148,7 @@ class TaskWorker:
             self._debug(
                 task_id=task.task_id,
                 event="WORKER",
-                message=("TaskWorker started execution."),
+                message="TaskWorker started execution.",
                 objective=task.objective,
             )
 
@@ -153,12 +161,14 @@ class TaskWorker:
                 task=task,
             )
 
-            prompt = TERMINAL_EXECUTOR_PROMPT.format(**execution_context.model_dump())
+            prompt = TERMINAL_EXECUTOR_PROMPT.format(
+                **execution_context.model_dump()
+            )
 
             self._debug(
                 task_id=task.task_id,
                 event="CONTEXT",
-                message=("Task-local Executor context built."),
+                message="Task-local Executor context built.",
             )
 
             # ==================================================
@@ -168,12 +178,13 @@ class TaskWorker:
             self._debug(
                 task_id=task.task_id,
                 event="LLM",
-                message=("Requesting task-local workflow " "from Executor."),
+                message="Requesting task-local workflow from Executor.",
             )
 
             executor_output: ExecutorOutput = await call_nvidia(
                 prompt,
                 # "openai/gpt-oss-20b",
+                # "moonshotai/kimi-k3",
                 "nvidia/nemotron-3-super-120b-a12b",
                 subagent=True,
                 state_model=ExecutorOutput,
@@ -191,20 +202,16 @@ class TaskWorker:
             task_execution.workflow = workflow
 
             print("\n========== TASK WORKER ==========")
-
             print(f"TASK ID: {task.task_id}")
-
             print(f"OBJECTIVE: {task.objective}")
 
             print("\n========== WORKFLOW ==========")
-
             print(workflow.model_dump())
 
             for index, step in enumerate(
                 workflow.steps,
                 start=1,
             ):
-
                 print(
                     f"\n[STEP-{index}] --> "
                     f"{step.description} : "
@@ -216,7 +223,7 @@ class TaskWorker:
             self._debug(
                 task_id=task.task_id,
                 event="WORKFLOW",
-                message=("Executor workflow generated."),
+                message="Executor workflow generated.",
                 workflow_id=workflow.workflow_id,
                 step_count=len(workflow.steps),
             )
@@ -225,11 +232,10 @@ class TaskWorker:
                 workflow.steps,
                 start=1,
             ):
-
                 self._debug(
                     task_id=task.task_id,
                     event="WORKFLOW_STEP",
-                    message=(f"Workflow step {index}."),
+                    message=f"Workflow step {index}.",
                     step_id=step.step_id,
                     description=step.description,
                     capability=step.capability,
@@ -244,9 +250,9 @@ class TaskWorker:
             first_step = workflow.steps[0]
 
             attempt = ExecutionMemoryManager.start_attempt(
-                execution_memory=(state["execution_memory"]),
+                execution_memory=state["execution_memory"],
                 capability=first_step.capability,
-                strategy=(workflow.execution_strategy),
+                strategy=workflow.execution_strategy,
                 arguments=first_step.arguments,
             )
 
@@ -257,17 +263,14 @@ class TaskWorker:
             self._debug(
                 task_id=task.task_id,
                 event="ATTEMPT",
-                message=("ExecutionMemory attempt started."),
+                message="ExecutionMemory attempt started.",
                 attempt_id=attempt_id,
                 capability=first_step.capability,
             )
 
             print("\n========== EXECUTION MEMORY ==========")
-
             print(f"TASK ID: {task.task_id}")
-
             print(f"ATTEMPT ID: {attempt_id}")
-
             print("STATUS: running")
 
             # ==================================================
@@ -296,36 +299,50 @@ class TaskWorker:
                 self._debug(
                     task_id=task.task_id,
                     event="STEP_START",
-                    message=("Executing workflow step."),
+                    message="Executing workflow step.",
                     step_id=(
-                        current_step.step_id if current_step is not None else None
+                        current_step.step_id
+                        if current_step is not None
+                        else None
                     ),
                     capability=(
-                        current_step.capability if current_step is not None else None
+                        current_step.capability
+                        if current_step is not None
+                        else None
                     ),
                 )
 
-                execution_result = await self.workflow_runtime.execute_next_step(
-                    workflow,
+                execution_result = (
+                    await self.workflow_runtime.execute_next_step(
+                        workflow,
+                    )
                 )
 
                 workflow = execution_result["workflow"]
 
                 task_execution.workflow = workflow
 
-                tool_result = execution_result.get("tool_result")
+                tool_result = execution_result.get(
+                    "tool_result"
+                )
 
-                step_id = execution_result.get("step_id")
+                step_id = execution_result.get(
+                    "step_id"
+                )
 
-                capability = execution_result.get("capability")
+                capability = execution_result.get(
+                    "capability"
+                )
 
                 self._debug(
                     task_id=task.task_id,
                     event="STEP_RESULT",
-                    message=("WorkflowRuntime completed " "the current step."),
+                    message="WorkflowRuntime completed the current step.",
                     step_id=step_id,
                     capability=capability,
-                    completed=execution_result.get("completed"),
+                    completed=execution_result.get(
+                        "completed"
+                    ),
                     workflow_status=workflow.status.value,
                 )
 
@@ -335,24 +352,34 @@ class TaskWorker:
 
                 if tool_result is not None:
 
-                    tool_results.append(tool_result)
+                    tool_results.append(
+                        tool_result
+                    )
 
                     if not capability:
-
                         raise ValueError(
                             "WorkflowRuntime returned a tool "
                             "result without the executing "
                             "capability."
                         )
 
-                    processed_result = await process_tool_result(
-                        state=state,
-                        tool_name=capability,
-                        raw_result=tool_result,
-                        attempt=(len(processing_results) + 1),
+                    processed_result = (
+                        await process_tool_result(
+                            state=state,
+                            tool_name=capability,
+                            raw_result=tool_result,
+                            attempt=(
+                                len(processing_results) + 1
+                            ),
+                        )
                     )
 
-                    artifact_action = processed_result.artifact_decision.action.value
+                    artifact_action = (
+                        processed_result
+                        .artifact_decision
+                        .action
+                        .value
+                    )
 
                     self._debug(
                         task_id=task.task_id,
@@ -366,119 +393,194 @@ class TaskWorker:
                         artifact_action=artifact_action,
                     )
 
-                    processing_results.append(processed_result)
+                    processing_results.append(
+                        processed_result
+                    )
 
-                    print("\n========== TASK RESULT PROCESSED ==========")
+                    print(
+                        "\n========== TASK RESULT PROCESSED =========="
+                    )
 
-                    print(f"TASK ID: {task.task_id}")
+                    print(
+                        f"TASK ID: {task.task_id}"
+                    )
 
-                    print(f"STEP ID: {step_id}")
+                    print(
+                        f"STEP ID: {step_id}"
+                    )
 
-                    print(f"CAPABILITY: {capability}")
+                    print(
+                        f"CAPABILITY: {capability}"
+                    )
 
-                    print(processed_result)
+                    print(
+                        processed_result
+                    )
 
                 if execution_result.get("completed"):
                     break
 
             # ==================================================
-            # 7. Build task-local result payload
+            # 7. Finalize ExecutionMemory attempt FIRST
+            # ==================================================
+
+            if attempt_id is not None:
+
+                final_processing_result = (
+                    processing_results[-1]
+                    if processing_results
+                    else None
+                )
+
+                final_execution = (
+                    final_processing_result
+                    .normalized_result
+                    .execution
+                    if final_processing_result is not None
+                    else None
+                )
+
+                execution_success = (
+                    workflow.status.value == "completed"
+                    and (
+                        final_execution.success
+                        if final_execution is not None
+                        else False
+                    )
+                )
+
+                execution_error = (
+                    final_execution.stderr
+                    if final_execution is not None
+                    else (
+                        "Workflow terminated before a "
+                        "RuntimeProcessingResult was produced."
+                    )
+                )
+
+                print(
+                    "\n[ATTEMPT FINALIZE] "
+                    f"task={task.task_id} "
+                    f"attempt={attempt_id} "
+                    f"success={execution_success}"
+                )
+
+                ExecutionMemoryManager.finish_attempt(
+                    execution_memory=state["execution_memory"],
+                    attempt_id=attempt_id,
+                    runtime_result=final_processing_result,
+                    success=execution_success,
+                    error=execution_error,
+                )
+
+                # --------------------------------------------------
+                # IMPORTANT:
+                #
+                # Re-resolve the attempt AFTER finalization and
+                # detach it from the worker-local ExecutionMemory.
+                # --------------------------------------------------
+
+                finalized_attempt = next(
+                    (
+                        worker_attempt
+                        for worker_attempt
+                        in state["execution_memory"].attempts
+                        if worker_attempt.attempt_id
+                        == attempt_id
+                    ),
+                    None,
+                )
+
+                if finalized_attempt is None:
+                    raise RuntimeError(
+                        "Execution attempt disappeared after "
+                        "finalization: "
+                        f"{attempt_id}"
+                    )
+
+                if finalized_attempt.status.value not in (
+                    "succeeded",
+                    "failed",
+                ):
+                    raise RuntimeError(
+                        "Execution attempt remained non-terminal "
+                        "after finish_attempt(): "
+                        f"{attempt_id} "
+                        f"status={finalized_attempt.status.value}"
+                    )
+
+                # Detach the terminal record from the mutable
+                # worker-local memory before returning it.
+                finalized_attempt = deepcopy(
+                    finalized_attempt
+                )
+
+                print(
+                    "[ATTEMPT FINALIZE] "
+                    f"Final status="
+                    f"{finalized_attempt.status.value}"
+                )
+
+                self._debug(
+                    task_id=task.task_id,
+                    event="ATTEMPT_DONE",
+                    message="ExecutionMemory attempt finalized.",
+                    attempt_id=attempt_id,
+                    status=finalized_attempt.status.value,
+                    processing_results=len(
+                        processing_results
+                    ),
+                )
+
+                print(
+                    "\n========== EXECUTION MEMORY =========="
+                )
+
+                print(
+                    f"TASK ID: {task.task_id}"
+                )
+
+                print(
+                    f"ATTEMPT ID: {attempt_id}"
+                )
+
+                print(
+                    "PROCESSING RESULTS: "
+                    f"{len(processing_results)}"
+                )
+
+                print("STATUS: finalized")
+
+                print(
+                    "FINAL ATTEMPT STATUS: "
+                    f"{finalized_attempt.status.value}"
+                )
+
+            task_execution.active_attempt_id = None
+
+            # ==================================================
+            # 8. Build task-local result payload
             # ==================================================
 
             task_execution.result = {
                 "tool_results": tool_results,
                 "processing_results": [
-                    result.model_dump() for result in processing_results
+                    result.model_dump()
+                    for result in processing_results
                 ],
             }
 
             self._debug(
                 task_id=task.task_id,
                 event="WORKFLOW_DONE",
-                message=("Task workflow reached terminal state."),
+                message="Task workflow reached terminal state.",
                 workflow_id=workflow.workflow_id,
                 workflow_status=workflow.status.value,
                 processing_results=len(processing_results),
             )
 
             # ==================================================
-            # 8. Finalize ExecutionMemory attempt
-            # ==================================================
-
-            if attempt_id is not None:
-
-                final_processing_result = (
-                    processing_results[-1] if processing_results else None
-                )
-
-                final_execution = (
-                    final_processing_result.normalized_result.execution
-                    if final_processing_result is not None
-                    else None
-                )
-
-                ExecutionMemoryManager.finish_attempt(
-                    execution_memory=(state["execution_memory"]),
-                    attempt_id=attempt_id,
-                    runtime_result=(final_processing_result),
-                    success=(
-                        workflow.status.value == "completed"
-                        and (
-                            final_execution.success
-                            if final_execution is not None
-                            else False
-                        )
-                    ),
-                    error=(
-                        final_execution.stderr
-                        if final_execution is not None
-                        else (
-                            "Workflow terminated before a "
-                            "RuntimeProcessingResult was produced."
-                        )
-                    ),
-                )
-
-                completed_attempt = next(
-                    (
-                        attempt
-                        for attempt in state["execution_memory"].attempts
-                        if attempt.attempt_id == attempt_id
-                    ),
-                    None,
-                )
-
-                self._debug(
-                    task_id=task.task_id,
-                    event="ATTEMPT_DONE",
-                    message=("ExecutionMemory attempt finalized."),
-                    attempt_id=attempt_id,
-                    status=(
-                        completed_attempt.status.value
-                        if completed_attempt is not None
-                        else None
-                    ),
-                    processing_results=len(processing_results),
-                )
-
-                print("\n========== EXECUTION MEMORY ==========")
-
-                print(f"TASK ID: {task.task_id}")
-
-                print(f"ATTEMPT ID: {attempt_id}")
-
-                print("PROCESSING RESULTS: " f"{len(processing_results)}")
-
-                print("STATUS: finalized")
-
-                if completed_attempt is not None:
-
-                    print("FINAL ATTEMPT STATUS: " f"{completed_attempt.status.value}")
-
-            task_execution.active_attempt_id = None
-
-            # ==================================================
-            # 9. Mark local task execution completed
+            # 9. Mark local task execution terminal
             # ==================================================
 
             task_execution.status = (
@@ -490,7 +592,7 @@ class TaskWorker:
             self._debug(
                 task_id=task.task_id,
                 event="WORKER_DONE",
-                message=("TaskWorker completed execution."),
+                message="TaskWorker completed execution.",
                 status=task_execution.status.value,
                 processing_results=len(processing_results),
             )
@@ -498,7 +600,7 @@ class TaskWorker:
             return TaskExecutionResult(
                 execution_id=task_execution.execution_id,
                 execution_attempt_id=attempt_id,
-                execution_attempt=completed_attempt,
+                execution_attempt=finalized_attempt,
                 plan_id=task_execution.plan_id,
                 task_id=task_execution.task_id,
                 status=task_execution.status,
@@ -511,14 +613,58 @@ class TaskWorker:
 
         except asyncio.CancelledError:
 
-            task_execution.status = TaskExecutionStatus.CANCELLED
+            task_execution.status = (
+                TaskExecutionStatus.CANCELLED
+            )
+
+            # --------------------------------------------------
+            # Cancelled tasks still need their running attempt
+            # finalized before the worker exits.
+            # --------------------------------------------------
+
+            if attempt_id is not None:
+
+                try:
+
+                    ExecutionMemoryManager.finish_attempt(
+                        execution_memory=state[
+                            "execution_memory"
+                        ],
+                        attempt_id=attempt_id,
+                        runtime_result=None,
+                        success=False,
+                        error=(
+                            "Task execution was cancelled."
+                        ),
+                    )
+
+                    cancelled_attempt = next(
+                        (
+                            worker_attempt
+                            for worker_attempt
+                            in state[
+                                "execution_memory"
+                            ].attempts
+                            if worker_attempt.attempt_id
+                            == attempt_id
+                        ),
+                        None,
+                    )
+
+                    if cancelled_attempt is not None:
+                        finalized_attempt = deepcopy(
+                            cancelled_attempt
+                        )
+
+                except ValueError:
+                    pass
 
             task_execution.active_attempt_id = None
 
             self._debug(
                 task_id=task.task_id,
                 event="CANCELLED",
-                message=("TaskWorker execution was cancelled."),
+                message="TaskWorker execution was cancelled.",
                 attempt_id=attempt_id,
             )
 
@@ -526,16 +672,75 @@ class TaskWorker:
 
         except Exception as error:
 
-            task_execution.status = TaskExecutionStatus.FAILED
+            task_execution.status = (
+                TaskExecutionStatus.FAILED
+            )
 
             task_execution.error = str(error)
+
+            # --------------------------------------------------
+            # A worker exception after start_attempt() must not
+            # leave a RUNNING attempt behind.
+            # --------------------------------------------------
+
+            if attempt_id is not None:
+
+                try:
+
+                    ExecutionMemoryManager.finish_attempt(
+                        execution_memory=state[
+                            "execution_memory"
+                        ],
+                        attempt_id=attempt_id,
+                        runtime_result=(
+                            processing_results[-1]
+                            if processing_results
+                            else None
+                        ),
+                        success=False,
+                        error=str(error),
+                    )
+
+                    failed_attempt = next(
+                        (
+                            worker_attempt
+                            for worker_attempt
+                            in state[
+                                "execution_memory"
+                            ].attempts
+                            if worker_attempt.attempt_id
+                            == attempt_id
+                        ),
+                        None,
+                    )
+
+                    if failed_attempt is not None:
+
+                        if failed_attempt.status.value not in (
+                            "succeeded",
+                            "failed",
+                        ):
+                            raise RuntimeError(
+                                "Execution attempt remained "
+                                "non-terminal after failure "
+                                "finalization: "
+                                f"{attempt_id}"
+                            )
+
+                        finalized_attempt = deepcopy(
+                            failed_attempt
+                        )
+
+                except ValueError:
+                    # Preserve the original worker exception.
+                    pass
 
             task_execution.active_attempt_id = None
 
             self._debug(
                 task_id=task.task_id,
                 event="ERROR",
-                message=("TaskWorker execution failed."),
+                message="TaskWorker execution failed.",
                 attempt_id=attempt_id,
                 error=str(error),
             )
@@ -543,22 +748,15 @@ class TaskWorker:
             return TaskExecutionResult(
                 execution_id=task_execution.execution_id,
                 execution_attempt_id=attempt_id,
-                execution_attempt=(
-                    next(
-                        (
-                            attempt
-                            for attempt in state["execution_memory"].attempts
-                            if attempt.attempt_id == attempt_id
-                        ),
-                        None,
-                    )
-                    if attempt_id is not None
-                    else None
-                ),
+                execution_attempt=finalized_attempt,
                 plan_id=task_execution.plan_id,
                 task_id=task_execution.task_id,
                 status=TaskExecutionStatus.FAILED,
-                workflow_id=(workflow.workflow_id if workflow is not None else None),
+                workflow_id=(
+                    workflow.workflow_id
+                    if workflow is not None
+                    else None
+                ),
                 result=task_execution.result,
                 error=str(error),
                 metadata=task_execution.metadata,

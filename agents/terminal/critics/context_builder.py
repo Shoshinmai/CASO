@@ -30,7 +30,7 @@ def build_critic_context(
     The builder supports both:
 
     1. The existing single-task runtime path.
-    2. The new concurrent plan-level execution path.
+    2. The concurrent plan-level execution path.
 
     This function does not:
         - perform Critic reasoning,
@@ -117,7 +117,6 @@ def build_critic_context(
 
         return CriticContext(
             overall_goal=overall_goal,
-
             task_plan_summary=task_plan_summary,
 
             plan_execution_outcome=(
@@ -136,9 +135,7 @@ def build_critic_context(
             ),
 
             execution_summary=execution_summary,
-
             active_memory=active_memory,
-
             artifact_catalog=artifact_catalog,
         )
 
@@ -150,7 +147,6 @@ def build_critic_context(
 
     return CriticContext(
         overall_goal=overall_goal,
-
         task_plan_summary=task_plan_summary,
 
         plan_execution_outcome=(
@@ -166,9 +162,7 @@ def build_critic_context(
         ),
 
         execution_summary=execution_summary,
-
         active_memory=active_memory,
-
         artifact_catalog=artifact_catalog,
     )
 
@@ -188,6 +182,10 @@ def _build_concurrent_critic_context(
 
     The Critic receives the whole plan-level situation rather than
     a singular current task.
+
+    Importantly, task execution evidence is formatted explicitly
+    from RuntimeProcessingResult instead of exposing raw Python
+    representations.
     """
 
     return CriticContext(
@@ -258,11 +256,13 @@ def _build_concurrent_execution_situation(
             "One or more tasks were cancelled."
         )
 
-    if outcome.condition.value == "completed":
+    if condition == "completed":
         return (
             "Concurrent execution completed all planned tasks. "
-            "Determine whether the overall user goal has been "
-            "achieved."
+            "Determine whether the actual execution evidence "
+            "demonstrates that the overall user goal has been "
+            "achieved. Do not equate plan completion with goal "
+            "completion."
         )
 
     return (
@@ -278,7 +278,11 @@ def _format_plan_execution_outcome(
     Format the structured concurrent execution outcome for the
     Critic prompt.
 
-    No semantic interpretation is performed here.
+    This function deliberately exposes the semantic evidence
+    produced by the Runtime Processing Pipeline.
+
+    It does not perform semantic interpretation or decide whether
+    the user goal is complete.
     """
 
     lines = [
@@ -340,32 +344,353 @@ def _format_plan_execution_outcome(
     else:
         lines.append("- None")
 
+    # ==========================================================
+    # Task-level execution evidence
+    # ==========================================================
+
     if outcome.task_results:
+
         lines.extend(
             [
                 "",
-                "Task Execution Results:",
+                "Task Execution Evidence:",
             ]
         )
 
         for task_id, result in outcome.task_results.items():
 
             lines.append(
-                f"- {task_id}: "
-                f"{result.status.value}"
+                f"- Task: {task_id}"
+            )
+
+            lines.append(
+                f"  Task status: {result.status.value}"
             )
 
             if result.error:
                 lines.append(
-                    f"  Error: {result.error}"
+                    f"  Worker error: {result.error}"
                 )
+
+            # --------------------------------------------------
+            # RuntimeProcessingResult evidence
+            # --------------------------------------------------
+
+            processing_results = (
+                result.processing_results
+            )
+
+            if processing_results:
+
+                lines.append(
+                    "  Processing results:"
+                )
+
+                for index, processed in enumerate(
+                    processing_results,
+                    start=1,
+                ):
+
+                    normalized = (
+                        processed.normalized_result
+                    )
+
+                    execution = (
+                        normalized.execution
+                    )
+
+                    lines.append(
+                        f"    [{index}] Tool: "
+                        f"{normalized.context.tool_name}"
+                    )
+
+                    lines.append(
+                        "        Execution success: "
+                        f"{execution.success}"
+                    )
+
+                    lines.append(
+                        "        Progress made: "
+                        f"{execution.progress_made}"
+                    )
+
+                    if execution.return_code is not None:
+                        lines.append(
+                            "        Return code: "
+                            f"{execution.return_code}"
+                        )
+
+                    if execution.message:
+                        lines.append(
+                            "        Message: "
+                            f"{execution.message}"
+                        )
+
+                    if execution.stdout:
+                        lines.append(
+                            "        stdout:"
+                        )
+
+                        lines.append(
+                            _indent_text(
+                                execution.stdout,
+                                indent="          ",
+                            )
+                        )
+
+                    if execution.stderr:
+                        lines.append(
+                            "        stderr:"
+                        )
+
+                        lines.append(
+                            _indent_text(
+                                execution.stderr,
+                                indent="          ",
+                            )
+                        )
+
+                    # ------------------------------------------
+                    # Structured facts
+                    # ------------------------------------------
+
+                    if normalized.facts:
+
+                        lines.append(
+                            "        Facts:"
+                        )
+
+                        for fact in normalized.facts:
+
+                            lines.append(
+                                "          - "
+                                f"{fact.statement}"
+                            )
+
+                    # ------------------------------------------
+                    # Discovered resources
+                    # ------------------------------------------
+
+                    if normalized.resources:
+
+                        lines.append(
+                            "        Resources:"
+                        )
+
+                        for resource in (
+                            normalized.resources
+                        ):
+
+                            lines.append(
+                                "          - "
+                                f"{resource.type.value}: "
+                                f"{resource.identifier}"
+                            )
+
+                    # ------------------------------------------
+                    # Artifact decision
+                    # ------------------------------------------
+
+                    artifact_decision = (
+                        processed.artifact_decision
+                    )
+
+                    lines.append(
+                        "        Artifact action: "
+                        f"{artifact_decision.action.value}"
+                    )
+
+                    lines.append(
+                        "        Artifact reason: "
+                        f"{artifact_decision.reason}"
+                    )
+
+                    if artifact_decision.artifact:
+                        lines.append(
+                            "        Artifact candidate: "
+                            f"{artifact_decision.artifact.summary}"
+                        )
+
+                    # ------------------------------------------
+                    # Memory update proposal
+                    # ------------------------------------------
+
+                    memory_update = (
+                        processed.memory_update
+                    )
+
+                    if memory_update.known_facts:
+
+                        lines.append(
+                            "        Memory known facts:"
+                        )
+
+                        for fact in (
+                            memory_update.known_facts
+                        ):
+
+                            lines.append(
+                                "          - "
+                                f"{fact.statement}"
+                            )
+
+                    if memory_update.discovered_resources:
+
+                        lines.append(
+                            "        Memory resources:"
+                        )
+
+                        for resource in (
+                            memory_update
+                            .discovered_resources
+                        ):
+
+                            lines.append(
+                                "          - "
+                                f"{resource.type.value}: "
+                                f"{resource.identifier}"
+                            )
+
+                    if memory_update.completed_work:
+
+                        lines.append(
+                            "        Completed work:"
+                        )
+
+                        for work in (
+                            memory_update.completed_work
+                        ):
+
+                            lines.append(
+                                f"          - {work}"
+                            )
+
+                    if memory_update.unresolved_needs:
+
+                        lines.append(
+                            "        Unresolved needs:"
+                        )
+
+                        for need in (
+                            memory_update.unresolved_needs
+                        ):
+
+                            lines.append(
+                                f"          - {need}"
+                            )
+
+                    if memory_update.evidence:
+
+                        lines.append(
+                            "        Evidence:"
+                        )
+
+                        for evidence in (
+                            memory_update.evidence
+                        ):
+
+                            lines.append(
+                                f"          - {evidence}"
+                            )
+
+            else:
+
+                # --------------------------------------------------
+                # Fallback when a task completed without a
+                # RuntimeProcessingResult.
+                #
+                # This is intentionally explicit so the Critic
+                # knows that execution status alone is not evidence
+                # of goal completion.
+                # --------------------------------------------------
+
+                lines.append(
+                    "  Processing results: None"
+                )
+
+            # --------------------------------------------------
+            # Legacy/general result payload
+            # --------------------------------------------------
 
             if result.result is not None:
-                lines.append(
-                    f"  Result: {result.result}"
-                )
+
+                result_payload = result.result
+
+                if isinstance(
+                    result_payload,
+                    dict,
+                ):
+
+                    # Do not duplicate the full processing results
+                    # because they were already rendered above.
+                    #
+                    # Only expose additional fields.
+                    additional_payload = {
+                        key: value
+                        for key, value
+                        in result_payload.items()
+                        if key
+                        not in {
+                            "processing_results",
+                        }
+                    }
+
+                    if additional_payload:
+                        lines.append(
+                            "  Additional worker result:"
+                        )
+
+                        lines.append(
+                            _indent_text(
+                                str(
+                                    additional_payload
+                                ),
+                                indent="    ",
+                            )
+                        )
+
+                else:
+
+                    lines.append(
+                        "  Worker result:"
+                    )
+
+                    lines.append(
+                        _indent_text(
+                            str(result_payload),
+                            indent="    ",
+                        )
+                    )
+
+    else:
+
+        lines.extend(
+            [
+                "",
+                "Task Execution Evidence:",
+                "- None",
+            ]
+        )
 
     return "\n".join(lines)
+
+
+def _indent_text(
+    value: str,
+    *,
+    indent: str,
+) -> str:
+    """
+    Indent multiline execution output while preserving its
+    contents.
+    """
+
+    text = str(value)
+
+    return "\n".join(
+        indent + line
+        for line in text.splitlines()
+    )
 
 
 def _build_remaining_objectives_for_plan(

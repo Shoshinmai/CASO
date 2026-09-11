@@ -26,38 +26,16 @@ async def concurrent_execution_node(
     """
     Execute the current TaskPlan through the concurrent
     task-execution coordinator.
-    
-    This node is the graph adapter for the Prototype 1 concurrent
-    execution path.
 
-    Responsibilities:
-    - receive the authoritative TaskPlan from TerminalState
-    - construct the concurrent execution stack
-    - execute dependency-aware task waves
-    - receive the final coordinated execution result
-    - build the deterministic PlanExecutionOutcome
-    - notify the Runtime that execution reached a stable review
-      boundary
+    This node is the graph boundary for concurrent execution.
 
-    This node does not:
-    - mutate individual TaskItems directly
-    - execute a single shared ExecutionWorkflow
-    - use TerminalState.execution_workflow as the active
-      concurrent-workflow container
-    - run the Critic
-    - make semantic decisions
+    Workers operate on isolated task-local snapshots.
 
-    Temporary debugging instrumentation is included so the
-    original PowerShell tab clearly shows:
+    The coordinator/reconciler owns the authoritative state
+    transition after the complete execution wave.
 
-        CONCURRENT EXECUTION START
-        WAITING FOR WORKERS
-        CONCURRENT EXECUTION END
-        RETURNING TO CENTRAL RUNTIME
-
-    The actual workers remain asyncio tasks inside the same
-    Python process. The worker PowerShell tabs are only
-    monitors.
+    This node therefore MUST explicitly return the authoritative
+    state produced by reconciliation.
     """
 
     task_plan = state.get(
@@ -90,20 +68,13 @@ async def concurrent_execution_node(
     print("=" * 72)
 
     print()
-    print("Plan:", task_plan.plan_id)
-    print("Goal:", task_plan.goal)
+    print(
+        f"Plan: {task_plan.plan_id}"
+    )
 
-    print()
-    print("Execution wave candidates:")
-
-    for task in task_plan.tasks:
-
-        if task.status.value == "ready":
-            print(
-                f"  {task.task_id}"
-                f" | status={task.status.value}"
-                f" | deps={task.dependencies}"
-            )
+    print(
+        f"Goal: {task_plan.goal}"
+    )
 
     ready_tasks = [
         task
@@ -113,8 +84,13 @@ async def concurrent_execution_node(
 
     print()
     print(
-        f"Ready tasks in current plan: "
+        "Ready tasks in current plan: "
         f"{len(ready_tasks)}"
+    )
+
+    print(
+        "Ready task IDs: "
+        f"{[task.task_id for task in ready_tasks]}"
     )
 
     print(
@@ -126,29 +102,19 @@ async def concurrent_execution_node(
     print("              WAITING FOR WORKERS")
     print("=" * 72)
 
-    print()
-    print(
-        "Worker monitor tabs should now show each "
-        "concurrent task."
-    )
-
-    print(
-        "The original PowerShell tab will remain here "
-        "until all workers finish."
-    )
-
     # ==========================================================
-    # Build task-local execution stack
+    # Build concurrent execution stack
     # ==========================================================
-
-    worker = TaskWorker()
-
-    runner = TaskRunner(
-        worker=worker,
-    )
+    #
+    # The executor now creates an isolated Worker/Runner stack
+    # per task. The runner supplied here is only retained for
+    # interface compatibility.
+    # ==========================================================
 
     executor = ConcurrentTaskExecutor(
-        runner=runner,
+        runner=TaskRunner(
+            worker=TaskWorker(),
+        ),
         max_concurrency=3,
     )
 
@@ -183,7 +149,7 @@ async def concurrent_execution_node(
     )
 
     # ==========================================================
-    # TEMPORARY DEBUGGING — execution finished
+    # Execution finished
     # ==========================================================
 
     print()
@@ -199,32 +165,105 @@ async def concurrent_execution_node(
         print(
             f"  {result.task_id}"
             f" | status={result.status.value}"
+            f" | processing_results="
+            f"{len(result.processing_results)}"
         )
 
     print()
     print(
-        "Returning to central runtime..."
+        "Plan condition: "
+        f"{plan_execution_outcome.condition.value}"
     )
 
-    print("=" * 72)
+    print(
+        "Active memory after reconciliation:"
+    )
+
+    active_memory = state.get(
+        "active_memory",
+    )
+
+    if active_memory is not None:
+
+        print(
+            f"  known_facts="
+            f"{len(active_memory.known_facts)}"
+        )
+
+        print(
+            f"  discovered_resources="
+            f"{len(active_memory.discovered_resources)}"
+        )
+
+        print(
+            f"  completed_work="
+            f"{len(active_memory.completed_work)}"
+        )
+
+        print(
+            f"  unresolved_needs="
+            f"{len(active_memory.unresolved_needs)}"
+        )
+
+    else:
+
+        print(
+            "  WARNING: active_memory missing."
+        )
 
     # ==========================================================
-    # Concurrent execution has reached a stable review boundary
-    #
-    # EXECUTING
-    #     ↓
-    # EXECUTION_COMPLETED
-    #     ↓
-    # REVIEWING
+    # Move Runtime into REVIEWING
     # ==========================================================
 
-    RuntimeKernel.handle_event(
+    next_stage = RuntimeKernel.handle_event(
         runtime_state=runtime_state,
         event=RuntimeEvent.EXECUTION_COMPLETED,
     )
 
+    print()
+    print(
+        "[CONCURRENT EXECUTION] "
+        "Runtime transition:"
+    )
+
+    print(
+        f"  event="
+        f"{RuntimeEvent.EXECUTION_COMPLETED.value}"
+    )
+
+    print(
+        f"  mode="
+        f"{runtime_state.mode.value}"
+    )
+
+    print(
+        f"  next_stage="
+        f"{next_stage.value}"
+    )
+
+    print(
+        f"  last_event="
+        f"{runtime_state.last_event.value}"
+    )
+
     # ==========================================================
-    # Return authoritative concurrent execution state
+    # AUTHORITATIVE GRAPH STATE PROPAGATION
+    # ==========================================================
+    #
+    # This is important.
+    #
+    # The reconciler has already mutated these objects.
+    # Explicitly returning them makes the concurrent execution
+    # node's graph contract unambiguous.
+    #
+    # In particular:
+    #
+    #     active_memory
+    #     artifact_references
+    #     execution_memory
+    #
+    # must survive the concurrent_execution → consistency →
+    # critic boundary.
     # ==========================================================
 
     return {
@@ -234,9 +273,24 @@ async def concurrent_execution_node(
             plan_execution_outcome
         ),
 
-        # The concurrent path does not use the singular
-        # ExecutionWorkflow slot.
+        "active_memory": state[
+            "active_memory"
+        ],
+
+        "artifact_references": state[
+            "artifact_references"
+        ],
+
+        "execution_memory": state[
+            "execution_memory"
+        ],
+
         "execution_workflow": None,
 
         "runtime_state": runtime_state,
+
+        # Clear stale Critic output from an earlier review.
+        "critic_output": None,
+
+        "critic_runtime_event": None,
     }

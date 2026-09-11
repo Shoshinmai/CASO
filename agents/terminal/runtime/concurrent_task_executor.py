@@ -34,19 +34,22 @@ class ConcurrentTaskExecutor:
     Execute an explicitly supplied batch of independent tasks
     concurrently.
 
+    Each task receives its own TaskWorker / TaskRunner /
+    WorkflowRuntime stack.
+
+    This is important because worker execution is task-local.
+    Sharing one TaskWorker or WorkflowRuntime across concurrent
+    tasks unnecessarily couples their runtime objects.
+
     This class does not:
     - discover READY tasks
     - mutate TaskPlan state
     - resolve dependencies
     - release dependent tasks
-    - perform result aggregation into the central plan
+    - perform central result reconciliation
 
     It only executes the supplied execution wave and returns
     one TaskExecutionResult per task.
-
-    Temporary debugging:
-    - opens one Windows Terminal monitor tab per worker
-    - writes worker lifecycle events to per-task JSONL logs
     """
 
     def __init__(
@@ -105,31 +108,6 @@ class ConcurrentTaskExecutor:
                 task_count=len(tasks),
             )
 
-        # ======================================================
-        # DEBUG SESSION PROPAGATION
-        # ======================================================
-        #
-        # The wave owns one shared debug session.
-        #
-        # The same session is injected into:
-        #
-        #     TaskRunner
-        #          ↓
-        #     TaskWorker
-        #
-        # This is debugging instrumentation only. It does not
-        # participate in task scheduling or result semantics.
-        # ======================================================
-
-        worker = TaskWorker(
-            debug_session=debug_session,
-        )
-
-        runner = TaskRunner(
-            worker=worker,
-            debug_session=debug_session,
-        )
-
         async def execute_one(
             task: TaskItem,
         ) -> TaskExecutionResult:
@@ -145,6 +123,41 @@ class ConcurrentTaskExecutor:
                     },
                 )
 
+                # ==================================================
+                # IMPORTANT:
+                #
+                # Every concurrent task gets its OWN execution
+                # stack.
+                #
+                # Before this change:
+                #
+                #     one TaskWorker
+                #          ↓
+                #     one TaskRunner
+                #          ↓
+                #     one WorkflowRuntime
+                #
+                # was shared by every worker.
+                #
+                # Now:
+                #
+                #     Task A → Worker A → Runner A → Runtime A
+                #     Task B → Worker B → Runner B → Runtime B
+                #     Task C → Worker C → Runner C → Runtime C
+                #
+                # The debug session remains shared intentionally
+                # because it is only a logging coordinator.
+                # ==================================================
+
+                worker = TaskWorker(
+                    debug_session=debug_session,
+                )
+
+                runner = TaskRunner(
+                    worker=worker,
+                    debug_session=debug_session,
+                )
+
                 debug_session.write(
                     task_id=task.task_id,
                     event="START",
@@ -156,11 +169,29 @@ class ConcurrentTaskExecutor:
 
                 try:
 
+                    context.status = (
+                        TaskExecutionStatus.RUNNING
+                    )
+
                     debug_session.write(
                         task_id=task.task_id,
                         event="RUNNING",
                         message=(
                             "TaskRunner execution started."
+                        ),
+                    )
+
+                    # --------------------------------------------------
+                    # Explicit marker immediately before the LLM call
+                    # is reached inside TaskWorker.
+                    # --------------------------------------------------
+
+                    debug_session.write(
+                        task_id=task.task_id,
+                        event="WORKER_DISPATCH",
+                        message=(
+                            "Dispatching isolated worker "
+                            "execution stack."
                         ),
                     )
 
@@ -179,6 +210,9 @@ class ConcurrentTaskExecutor:
                         status=result.status.value,
                         execution_id=result.execution_id,
                         workflow_id=result.workflow_id,
+                        processing_results=len(
+                            result.processing_results
+                        ),
                     )
 
                     debug_session.close_worker(
@@ -246,6 +280,7 @@ class ConcurrentTaskExecutor:
                         result=context.result,
                         error=str(error),
                         metadata=context.metadata,
+                        processing_results=[],
                     )
 
                     debug_session.close_worker(
@@ -260,11 +295,25 @@ class ConcurrentTaskExecutor:
         # REAL CONCURRENT EXECUTION
         # ======================================================
         #
-        # The actual concurrency mechanism remains unchanged.
+        # All execute_one() coroutines are scheduled together.
         #
-        # Every execute_one() coroutine is scheduled concurrently
-        # through asyncio.gather().
+        # The semaphore limits the number of active workers but
+        # does NOT serialize them.
         # ======================================================
+
+        print()
+        print(
+            "[CONCURRENT EXECUTOR] "
+            f"Dispatching {len(tasks)} task(s) "
+            f"with max_concurrency="
+            f"{self.max_concurrency}"
+        )
+
+        print(
+            "[CONCURRENT EXECUTOR] "
+            "Tasks="
+            f"{[task.task_id for task in tasks]}"
+        )
 
         raw_results = await asyncio.gather(
             *(execute_one(task) for task in tasks),
@@ -305,6 +354,7 @@ class ConcurrentTaskExecutor:
                         error=(
                             "Task execution was cancelled."
                         ),
+                        processing_results=[],
                     )
                 )
 
@@ -324,6 +374,7 @@ class ConcurrentTaskExecutor:
                             TaskExecutionStatus.FAILED
                         ),
                         error=str(raw_result),
+                        processing_results=[],
                     )
                 )
 
@@ -349,6 +400,21 @@ class ConcurrentTaskExecutor:
                     "ConcurrentTaskExecutor."
                 ),
                 status=result.status.value,
+                processing_results=len(
+                    result.processing_results
+                ),
             )
+
+        print()
+        print(
+            "[CONCURRENT EXECUTOR] "
+            "All workers returned."
+        )
+
+        print(
+            "[CONCURRENT EXECUTOR] "
+            f"Results="
+            f"{[(r.task_id, r.status.value) for r in results]}"
+        )
 
         return results

@@ -150,5 +150,78 @@ def validate_critic_output(
                 f"Critic decision '{decision.value}' must not "
                 "contain target_task_ids."
             )
+    # ==========================================================
+    # GOAL COMPLETION EVIDENCE CONTRACT
+    # ==========================================================
+    #
+    # GOAL_COMPLETED is the terminal semantic decision.
+    #
+    # The Runtime does not independently understand the Critic's
+    # rationale, so require the Critic to explicitly provide
+    # concrete completion evidence when making this decision.
+    #
+    # This does NOT prove the decision is semantically correct.
+    # It prevents an unsupported empty/generic GOAL_COMPLETED
+    # response from reaching the Runtime.
+    # ==========================================================
 
+    if decision == CriticDecision.GOAL_COMPLETED:
+
+        evidence_text = "\n".join(
+            (
+                f"{item.source}: "
+                f"{item.observation}"
+            )
+            for item in critic_output.evidence
+        ).lower()
+
+        rationale = (
+            critic_output.rationale
+            .strip()
+            .lower()
+        )
+
+        if len(critic_output.evidence) < 2:
+            raise ValueError(
+                "GOAL_COMPLETED requires at least two "
+                "independent pieces of evidence."
+            )
+
+        completion_markers = (
+            "completed",
+            "created",
+            "produced",
+            "verified",
+            "achieved",
+            "satisfied",
+            "exists",
+            "generated",
+            "delivered",
+        )
+
+        has_completion_evidence = any(
+            marker in evidence_text
+            for marker in completion_markers
+        )
+
+        if not has_completion_evidence:
+            raise ValueError(
+                "GOAL_COMPLETED evidence does not contain "
+                "an explicit completion observation."
+            )
+
+        if (
+            "plan completed" in rationale
+            and not (
+                "goal completed" in rationale
+                or "goal achieved" in rationale
+                or "goal satisfied" in rationale
+            )
+        ):
+            raise ValueError(
+                "GOAL_COMPLETED rationale appears to rely only "
+                "on plan completion rather than explicit "
+                "overall-goal completion."
+            )
+            
     return critic_output

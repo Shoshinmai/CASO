@@ -8,7 +8,7 @@ from agents.terminal.prompts.critics_prompt import TERMINAL_CRITIC_PROMPT
 from llm.llmclient import call_nvidia
 
 
-async def terminal_critic_node(state):
+async def terminal_critic_node(state):    
     """
     Evaluate the current task objective and produce a
     structured CriticOutput.
@@ -17,14 +17,59 @@ async def terminal_critic_node(state):
     It does not execute the resulting decision.
     """
 
-    print("\n========== ACTIVE MEMORY ==========")
-    print(state["active_memory"])
-    
+    print("\n========== CRITIC INPUT ==========")
+
     critic_context = build_critic_context(
         state=state,
     )
 
-    prompt = TERMINAL_CRITIC_PROMPT.format(**critic_context.model_dump())
+    print("\n----- OVERALL GOAL -----")
+    print(
+        critic_context.overall_goal
+    )
+
+    print("\n----- TASK PLAN SUMMARY -----")
+    print(
+        critic_context.task_plan_summary
+    )
+
+    print("\n----- PLAN EXECUTION OUTCOME -----")
+    print(
+        critic_context.plan_execution_outcome
+    )
+
+    print("\n----- CURRENT EXECUTION SITUATION -----")
+    print(
+        critic_context.current_objective
+    )
+
+    print("\n----- REMAINING OBJECTIVES -----")
+    print(
+        critic_context.remaining_objectives
+    )
+
+    print("\n----- EXECUTION SUMMARY -----")
+    print(
+        critic_context.execution_summary
+    )
+
+    print("\n----- ACTIVE MEMORY -----")
+    print(
+        critic_context.active_memory
+    )
+
+    print("\n----- ARTIFACT CATALOG -----")
+    print(
+        critic_context.artifact_catalog
+    )
+
+    print(
+        "\n========== END CRITIC INPUT =========="
+    )
+
+    prompt = TERMINAL_CRITIC_PROMPT.format(
+        **critic_context.model_dump(),
+    )
 
     critic_output = await call_nvidia(
         prompt,

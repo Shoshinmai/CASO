@@ -159,7 +159,7 @@ async def test_d6_3_concurrent_critic_integration():
 
     print("\n")
     print("=" * 70)
-    print("D.6.3 — CONCURRENT CRITIC INTEGRATION TEST")
+    print("CONCURRENT CRITIC INTEGRATION TEST")
     print("=" * 70)
 
     print("\n[STARTING FULL RUNTIME GRAPH]")

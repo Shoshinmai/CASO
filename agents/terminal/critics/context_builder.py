@@ -223,12 +223,8 @@ def _build_concurrent_execution_situation(
     outcome: PlanExecutionOutcome,
 ) -> str:
     """
-    Build a concise semantic description of the current
-    concurrent execution situation.
-
-    This preserves the existing `current_objective` field for
-    compatibility while removing the assumption that there is
-    exactly one current task.
+    Describe the stable concurrent execution boundary without
+    implying semantic goal completion.
     """
 
     condition = outcome.condition.value
@@ -237,16 +233,16 @@ def _build_concurrent_execution_situation(
         return (
             "Concurrent execution reached a stable boundary "
             f"with condition '{condition}'. "
-            "One or more tasks failed and may require "
-            "semantic recovery."
+            "One or more tasks failed. Determine whether those "
+            "failures affect the user's overall goal and whether "
+            "recovery is required."
         )
 
     if outcome.blocked_task_ids:
         return (
             "Concurrent execution reached a stable boundary "
             f"with condition '{condition}'. "
-            "One or more tasks are blocked by dependency "
-            "state."
+            "One or more tasks are blocked by dependency state."
         )
 
     if outcome.cancelled_task_ids:
@@ -258,11 +254,12 @@ def _build_concurrent_execution_situation(
 
     if condition == "completed":
         return (
-            "Concurrent execution completed all planned tasks. "
-            "Determine whether the actual execution evidence "
-            "demonstrates that the overall user goal has been "
-            "achieved. Do not equate plan completion with goal "
-            "completion."
+            "The current rolling TaskPlan has been fully executed. "
+            "This proves only that the planned tasks reached their "
+            "terminal states. It does NOT prove that the overall "
+            "user goal has been achieved. The Critic must independently "
+            "verify every material goal requirement using concrete "
+            "execution evidence, Active Task Memory, and artifacts."
         )
 
     return (
@@ -697,10 +694,10 @@ def _build_remaining_objectives_for_plan(
     task_plan: TaskPlan,
 ) -> str:
     """
-    Build the set of objectives that are not completed.
+    Build a Critic-facing description of what remains.
 
-    Unlike the legacy single-task path, this includes the entire
-    relevant remainder of the rolling plan.
+    When the plan is exhausted, explicitly state that plan exhaustion
+    is not equivalent to goal completion.
     """
 
     remaining_tasks = [
@@ -713,28 +710,37 @@ def _build_remaining_objectives_for_plan(
         }
     ]
 
-    if not remaining_tasks:
-        return "No remaining objectives."
+    if remaining_tasks:
 
-    lines = []
+        lines = [
+            "Unfinished TaskPlan objectives:"
+        ]
 
-    for index, task in enumerate(
-        remaining_tasks,
-        start=1,
-    ):
-        lines.append(
-            f"{index}. "
-            f"[{task.status.value}] "
-            f"{task.objective}"
-        )
-
-        if task.dependencies:
+        for index, task in enumerate(
+            remaining_tasks,
+            start=1,
+        ):
             lines.append(
-                "   depends on: "
-                + ", ".join(task.dependencies)
+                f"{index}. "
+                f"[{task.status.value}] "
+                f"{task.objective}"
             )
 
-    return "\n".join(lines)
+            if task.dependencies:
+                lines.append(
+                    "   depends on: "
+                    + ", ".join(task.dependencies)
+                )
+
+        return "\n".join(lines)
+
+    return (
+        "No unfinished TaskPlan objectives remain.\n\n"
+        "IMPORTANT: The rolling TaskPlan is exhausted, but the "
+        "overall user goal is NOT automatically considered complete. "
+        "The Critic must still prove that every material goal "
+        "requirement has been satisfied."
+    )
 
 
 def _build_remaining_objectives(

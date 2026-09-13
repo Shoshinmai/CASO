@@ -18,6 +18,7 @@ from agents.terminal.state import TerminalState
 from agents.terminal.task_executor.task_worker import (
     TaskWorker,
 )
+from agents.terminal.task_plan.manager import TaskPlanManager
 
 
 async def concurrent_execution_node(
@@ -42,6 +43,24 @@ async def concurrent_execution_node(
 
     The coordinator/reconciler owns the authoritative state
     transition after the complete wave.
+
+    IMPORTANT:
+
+    Completion of a concurrent wave does NOT automatically mean
+    that the user's overall goal has been completed.
+
+    When reconciliation exhausts the current TaskPlan, the runtime
+    emits PLAN_EXHAUSTED rather than EXECUTION_COMPLETED. This
+    preserves the semantic lifecycle used by the legacy runtime:
+
+        PLAN_EXHAUSTED
+              ↓
+           REVIEWING
+              ↓
+            Critic
+              ↓
+       GOAL_COMPLETED /
+       REPLAN_REQUIRED
     """
 
     task_plan = state.get(
@@ -227,31 +246,55 @@ async def concurrent_execution_node(
         )
 
     # ==========================================================
-    # MOVE RUNTIME INTO REVIEWING
+    # DETERMINE THE RUNTIME REVIEW BOUNDARY
     # ==========================================================
     #
-    # This is the critical synchronization boundary.
+    # This distinction is critical.
     #
-    # Even when reconciliation makes a dependent task READY,
-    # that task is NOT executed here.
+    # A completed wave is not necessarily the end of the plan.
     #
-    # The graph returns to the Critic first.
+    # Example:
+    #
+    #   Wave 1:
+    #       A ──┐
+    #       B ──┴─> completed
+    #
+    #   Reconciliation:
+    #       C becomes READY
+    #
+    # In that case the runtime MUST enter REVIEWING through
+    # EXECUTION_COMPLETED. The Critic gets the opportunity to
+    # decide whether execution should continue.
+    #
+    # If the reconciliation instead leaves the entire TaskPlan
+    # exhausted, we use PLAN_EXHAUSTED. This mirrors the legacy
+    # runtime's semantic final-review boundary.
+    # ==========================================================
+
+    if TaskPlanManager.is_plan_complete(
+        plan=updated_plan,
+    ):
+        transition_event = RuntimeEvent.PLAN_EXHAUSTED
+    else:
+        transition_event = RuntimeEvent.EXECUTION_COMPLETED
+
+    # ==========================================================
+    # MOVE RUNTIME INTO REVIEWING
     # ==========================================================
 
     next_stage = RuntimeKernel.handle_event(
         runtime_state=runtime_state,
-        event=RuntimeEvent.EXECUTION_COMPLETED,
+        event=transition_event,
     )
 
     print()
     print(
-        "[CONCURRENT WAVE] "
-        "Runtime transition:"
+        "[CONCURRENT WAVE] Runtime transition:"
     )
 
     print(
         f"  event="
-        f"{RuntimeEvent.EXECUTION_COMPLETED.value}"
+        f"{transition_event.value}"
     )
 
     print(

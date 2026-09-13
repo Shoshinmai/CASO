@@ -53,9 +53,13 @@ def build_critic_context(
         "plan_execution_outcome",
     )
 
-    # ----------------------------------------------------------
+    runtime_state = state.get(
+        "runtime_state",
+    )
+
+    # ==========================================================
     # Shared context
-    # ----------------------------------------------------------
+    # ==========================================================
 
     overall_goal = task_plan.goal
 
@@ -78,9 +82,82 @@ def build_critic_context(
         ),
     )
 
-    # ----------------------------------------------------------
-    # Concurrent plan-level review
-    # ----------------------------------------------------------
+    # ==========================================================
+    # FINAL PLAN EXHAUSTION REVIEW
+    # ==========================================================
+    #
+    # IMPORTANT:
+    #
+    # This check MUST happen before the generic concurrent
+    # PlanExecutionOutcome branch.
+    #
+    # PLAN_EXHAUSTED means:
+    #
+    #     every planned TaskPlan task has reached a terminal
+    #     completed state.
+    #
+    # It does NOT mean:
+    #
+    #     the user's overall goal has been achieved.
+    #
+    # The Critic must perform the semantic final-goal review.
+    # ==========================================================
+
+    is_plan_exhausted_review = (
+        runtime_state is not None
+        and runtime_state.last_event
+        == RuntimeEvent.PLAN_EXHAUSTED
+    )
+
+    if is_plan_exhausted_review:
+
+        return CriticContext(
+            overall_goal=overall_goal,
+
+            task_plan_summary=task_plan_summary,
+
+            plan_execution_outcome=(
+                "PLAN_EXHAUSTED: every task currently contained "
+                "in the rolling TaskPlan has reached COMPLETED. "
+                "This is a deterministic TaskPlan state only. "
+                "It does NOT establish that the user's overall "
+                "goal has been achieved."
+            ),
+
+            current_objective=(
+                "The rolling TaskPlan has been exhausted. "
+                "Perform the final semantic evaluation of the "
+                "overall user goal using the original goal, "
+                "execution evidence, Active Task Memory, and "
+                "artifacts. Determine whether every material "
+                "requirement of the user's goal has actually "
+                "been satisfied."
+            ),
+
+            remaining_objectives=(
+                "No unfinished TaskPlan objectives remain.\n\n"
+                "The absence of unfinished TaskPlan objectives "
+                "does not itself prove that the user's overall "
+                "goal is complete. Independently verify the "
+                "goal against concrete execution evidence."
+            ),
+
+            execution_summary=execution_summary,
+
+            active_memory=active_memory,
+
+            artifact_catalog=artifact_catalog,
+        )
+
+    # ==========================================================
+    # CONCURRENT PLAN-LEVEL REVIEW
+    # ==========================================================
+    #
+    # This represents an ordinary concurrent wave boundary.
+    #
+    # The wave has completed, but the TaskPlan may still contain
+    # READY or otherwise unfinished work.
+    # ==========================================================
 
     if plan_execution_outcome is not None:
 
@@ -93,51 +170,13 @@ def build_critic_context(
             task_plan_summary=task_plan_summary,
         )
 
-    # ----------------------------------------------------------
+    # ==========================================================
     # Existing single-task review path
-    # ----------------------------------------------------------
-
-    runtime_state = state.get(
-        "runtime_state",
-    )
+    # ==========================================================
 
     current_task = TaskPlanManager.get_in_progress_task(
         plan=task_plan,
     )
-
-    # ----------------------------------------------------------
-    # Plan exhaustion review
-    # ----------------------------------------------------------
-
-    if (
-        runtime_state is not None
-        and runtime_state.last_event
-        == RuntimeEvent.PLAN_EXHAUSTED
-    ):
-
-        return CriticContext(
-            overall_goal=overall_goal,
-            task_plan_summary=task_plan_summary,
-
-            plan_execution_outcome=(
-                "The rolling TaskPlan has been exhausted. "
-                "No further task execution remains."
-            ),
-
-            current_objective=(
-                "All planned objectives have been completed. "
-                "Determine whether the overall user goal has "
-                "actually been achieved."
-            ),
-
-            remaining_objectives=(
-                "No remaining objectives."
-            ),
-
-            execution_summary=execution_summary,
-            active_memory=active_memory,
-            artifact_catalog=artifact_catalog,
-        )
 
     if current_task is None:
         raise ValueError(
@@ -147,6 +186,7 @@ def build_critic_context(
 
     return CriticContext(
         overall_goal=overall_goal,
+
         task_plan_summary=task_plan_summary,
 
         plan_execution_outcome=(
@@ -162,7 +202,9 @@ def build_critic_context(
         ),
 
         execution_summary=execution_summary,
+
         active_memory=active_memory,
+
         artifact_catalog=artifact_catalog,
     )
 
@@ -503,6 +545,7 @@ def _format_plan_execution_outcome(
                     )
 
                     if artifact_decision.artifact:
+
                         lines.append(
                             "        Artifact candidate: "
                             f"{artifact_decision.artifact.summary}"
@@ -538,8 +581,7 @@ def _format_plan_execution_outcome(
                         )
 
                         for resource in (
-                            memory_update
-                            .discovered_resources
+                            memory_update.discovered_resources
                         ):
 
                             lines.append(
@@ -633,6 +675,7 @@ def _format_plan_execution_outcome(
                     }
 
                     if additional_payload:
+
                         lines.append(
                             "  Additional worker result:"
                         )
@@ -720,6 +763,7 @@ def _build_remaining_objectives_for_plan(
             remaining_tasks,
             start=1,
         ):
+
             lines.append(
                 f"{index}. "
                 f"[{task.status.value}] "

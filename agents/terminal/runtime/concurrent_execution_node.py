@@ -342,9 +342,4 @@ async def concurrent_execution_node(
         "execution_workflow": None,
 
         "runtime_state": runtime_state,
-
-        # Clear stale Critic output from an earlier review.
-        "critic_output": None,
-
-        "critic_runtime_event": None,
     }

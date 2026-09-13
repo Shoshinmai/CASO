@@ -35,7 +35,8 @@ async def condense_memory(
     response = await call_nvidia(
         prompt,
         # "openai/gpt-oss-20b",
-        "nvidia/nemotron-3-ultra-550b-a55b",
+        "meta/muse-glimmer-30b",
+        # "nvidia/nemotron-3-ultra-550b-a55b",
         subagent=True,
         state_model=MemoryUpdateProposal,
     )

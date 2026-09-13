@@ -18,10 +18,25 @@ from agents.terminal.task_plan.models import TaskPlan
 @dataclass
 class CoordinatedPlanExecution:
     """
-    Terminal result of the coordinator's execution loop.
+    Terminal result of one concurrent execution wave.
 
-    The coordinator owns execution orchestration and preserves the
-    task-local terminal results produced across all execution waves.
+    The coordinator owns exactly one execution boundary:
+
+        READY discovery
+            ↓
+        wave admission
+            ↓
+        concurrent execution
+            ↓
+        central reconciliation
+            ↓
+        return to Runtime
+
+    The Runtime/Critic layer decides whether another wave should
+    be executed.
+
+    This object therefore contains only the results produced by
+    the current wave.
     """
 
     plan: TaskPlan
@@ -33,24 +48,40 @@ class CoordinatedPlanExecution:
 
 class TaskExecutionCoordinator:
     """
-    Orchestrate dependency-aware concurrent execution waves.
+    Orchestrate exactly one dependency-aware concurrent execution wave.
 
     Responsibilities:
     - discover the current READY tasks
-    - start one execution wave
-    - run the wave concurrently
-    - reconcile all results centrally
-    - preserve results across execution waves
-    - continue with the next READY wave
+    - admit one execution wave
+    - run that wave concurrently
+    - reconcile that wave centrally
+    - return the authoritative plan state
 
     This component owns orchestration only.
 
-    It does not:
+    It does NOT:
     - execute individual tasks
     - reason about task objectives
-    - mutate TaskItems directly
     - perform LLM calls
-    - make semantic critic decisions
+    - make Critic decisions
+    - automatically execute a newly-ready dependent wave
+
+    IMPORTANT:
+
+    A newly-ready wave is intentionally returned to the Runtime
+    rather than executed immediately.
+
+    This creates the required boundary:
+
+        wave N
+          ↓
+        reconcile
+          ↓
+        Critic
+          ↓
+        Runtime decision
+          ↓
+        wave N+1
     """
 
     def __init__(
@@ -67,189 +98,217 @@ class TaskExecutionCoordinator:
         state: dict,
     ) -> CoordinatedPlanExecution:
         """
-        Execute the task plan wave-by-wave until completion or
-        until no further executable work exists.
+        Execute exactly ONE currently-admitted concurrent wave.
 
-        Returns the authoritative TaskPlan together with all
-        terminal TaskExecutionResults produced during this
-        coordinator run.
+        This method intentionally does NOT loop until the complete
+        TaskPlan is exhausted.
+
+        The lifecycle is:
+
+            1. update READY state
+            2. discover READY tasks
+            3. admit those tasks
+            4. execute them concurrently
+            5. reconcile the wave
+            6. return
+
+        After reconciliation, newly-ready dependent tasks are left
+        READY for the Runtime/Critic cycle to evaluate.
+
+        Returns:
+            The authoritative TaskPlan after this wave and the
+            terminal results produced by this wave.
         """
 
-        all_task_results: list[
-            TaskExecutionResult
-        ] = []
-
         # ------------------------------------------------------
-        # Establish initial readiness.
+        # Establish current readiness.
         # ------------------------------------------------------
 
         TaskPlanManager.update_task_readiness(
             plan=plan,
         )
 
-        while True:
+        # ------------------------------------------------------
+        # Plan already complete.
+        #
+        # There is no wave to execute. Returning immediately lets
+        # the caller build a plan-level review outcome and invoke
+        # the Critic.
+        # ------------------------------------------------------
 
-            # --------------------------------------------------
-            # Plan already completed.
-            # --------------------------------------------------
+        if TaskPlanManager.is_plan_complete(
+            plan=plan,
+        ):
+            print(
+                "\n[COORDINATOR] "
+                "Plan is already complete. "
+                "No execution wave required."
+            )
 
-            if TaskPlanManager.is_plan_complete(
+            return CoordinatedPlanExecution(
                 plan=plan,
-            ):
-                print(
-                    "\n[COORDINATOR] "
-                    "Plan already complete."
-                )
-                break
-
-            # --------------------------------------------------
-            # Select the current execution wave.
-            #
-            # The ConcurrentTaskExecutor itself enforces the
-            # configured concurrency limit.
-            # --------------------------------------------------
-
-            ready_tasks = (
-                TaskPlanManager.get_ready_tasks(
-                    plan=plan,
-                )
+                task_results=[],
             )
+
+        # ------------------------------------------------------
+        # Select the CURRENT READY wave only.
+        # ------------------------------------------------------
+
+        ready_tasks = (
+            TaskPlanManager.get_ready_tasks(
+                plan=plan,
+            )
+        )
+
+        print(
+            "\n[COORDINATOR] "
+            f"READY tasks: "
+            f"{[task.task_id for task in ready_tasks]}"
+        )
+
+        # ------------------------------------------------------
+        # No READY work.
+        #
+        # Do not attempt another scheduling pass here.
+        # The Runtime/Critic boundary should inspect the stable
+        # plan state and decide what happens next.
+        # ------------------------------------------------------
+
+        if not ready_tasks:
 
             print(
-                "\n[COORDINATOR] "
-                f"READY tasks: "
-                f"{[task.task_id for task in ready_tasks]}"
+                "[COORDINATOR] "
+                "No READY tasks remain. "
+                "Returning control to Runtime."
             )
 
-            # --------------------------------------------------
-            # No READY work.
-            # --------------------------------------------------
-
-            if not ready_tasks:
-
-                print(
-                    "[COORDINATOR] "
-                    "No READY tasks remain."
-                )
-
-                break
-
-            # --------------------------------------------------
-            # Admit the entire current READY wave.
-            #
-            # This is the only place we transition READY →
-            # IN_PROGRESS before worker execution begins.
-            # --------------------------------------------------
-
-            execution_wave = (
-                TaskPlanManager.start_ready_tasks(
-                    plan=plan,
-                    limit=len(ready_tasks),
-                )
+            return CoordinatedPlanExecution(
+                plan=plan,
+                task_results=[],
             )
 
-            if not execution_wave:
+        # ------------------------------------------------------
+        # Admit the current READY wave.
+        #
+        # READY → IN_PROGRESS happens exactly once for this wave.
+        # ------------------------------------------------------
 
-                print(
-                    "[COORDINATOR] "
-                    "No tasks were admitted into the wave."
-                )
+        execution_wave = (
+            TaskPlanManager.start_ready_tasks(
+                plan=plan,
+                limit=len(ready_tasks),
+            )
+        )
 
-                break
+        if not execution_wave:
 
             print(
-                "\n[COORDINATOR] "
-                f"Starting execution wave | "
-                f"tasks="
-                f"{[task.task_id for task in execution_wave]}"
+                "[COORDINATOR] "
+                "No tasks were admitted into the wave. "
+                "Returning control to Runtime."
             )
 
-            # --------------------------------------------------
-            # Execute the entire wave concurrently.
-            # --------------------------------------------------
+            return CoordinatedPlanExecution(
+                plan=plan,
+                task_results=[],
+            )
 
-            results = await self.executor.execute(
-                plan_id=plan.plan_id,
-                tasks=execution_wave,
+        print(
+            "\n[COORDINATOR] "
+            "Starting execution wave | "
+            f"tasks="
+            f"{[task.task_id for task in execution_wave]}"
+        )
+
+        # ------------------------------------------------------
+        # Execute ONLY this wave concurrently.
+        # ------------------------------------------------------
+
+        results = await self.executor.execute(
+            plan_id=plan.plan_id,
+            tasks=execution_wave,
+            state=state,
+        )
+
+        print(
+            "\n[COORDINATOR] "
+            "Wave execution complete | "
+            f"results="
+            f"{[result.task_id for result in results]}"
+        )
+
+        # ------------------------------------------------------
+        # Reconcile this complete wave before returning.
+        #
+        # This updates:
+        # - task status
+        # - execution memory
+        # - active memory
+        # - artifacts
+        # - dependency readiness
+        #
+        # Newly-ready tasks are deliberately NOT executed here.
+        # ------------------------------------------------------
+
+        reconciliation = (
+            TaskResultReconciler.reconcile(
+                plan=plan,
+                results=results,
                 state=state,
             )
+        )
 
-            # --------------------------------------------------
-            # Preserve terminal task-local evidence from this
-            # wave before moving to the next one.
-            # --------------------------------------------------
+        print(
+            "\n[COORDINATOR] "
+            "Wave reconciliation complete."
+        )
 
-            all_task_results.extend(
-                results,
-            )
+        print(
+            "[COORDINATOR] "
+            f"Reconciled: "
+            f"{reconciliation.reconciled_task_ids}"
+        )
 
-            print(
-                "\n[COORDINATOR] "
-                f"Wave execution complete | "
-                f"results="
-                f"{[result.task_id for result in results]}"
-            )
+        print(
+            "[COORDINATOR] "
+            f"New READY: "
+            f"{reconciliation.newly_ready_task_ids}"
+        )
 
-            # --------------------------------------------------
-            # Reconcile all results only after the complete wave
-            # has finished.
-            #
-            # D.7.4:
-            #
-            # The reconciler now returns an explicit summary of
-            # the central state transition caused by this wave.
-            # --------------------------------------------------
+        print(
+            "[COORDINATOR] "
+            f"Blocked: "
+            f"{reconciliation.blocked_task_ids}"
+        )
 
-            reconciliation = (
-                TaskResultReconciler.reconcile(
-                    plan=plan,
-                    results=results,
-                    state=state,
-                )
-            )
+        print(
+            "[COORDINATOR] "
+            f"Merged attempts: "
+            f"{reconciliation.merged_attempt_ids}"
+        )
 
-            print(
-                "\n[COORDINATOR] "
-                "Wave reconciliation complete."
-            )
+        print(
+            "[COORDINATOR] "
+            f"Persisted artifacts: "
+            f"{reconciliation.persisted_artifact_ids}"
+        )
 
-            print(
-                "[COORDINATOR] "
-                f"Reconciled: "
-                f"{reconciliation.reconciled_task_ids}"
-            )
+        # ------------------------------------------------------
+        # CRITICAL BOUNDARY
+        #
+        # Do NOT loop back into TaskPlanManager here.
+        #
+        # The current wave has finished and the resulting plan
+        # state is now stable enough for the Critic to inspect.
+        # ------------------------------------------------------
 
-            print(
-                "[COORDINATOR] "
-                f"New READY: "
-                f"{reconciliation.newly_ready_task_ids}"
-            )
-
-            print(
-                "[COORDINATOR] "
-                f"Blocked: "
-                f"{reconciliation.blocked_task_ids}"
-            )
-
-            print(
-                "[COORDINATOR] "
-                f"Merged attempts: "
-                f"{reconciliation.merged_attempt_ids}"
-            )
-
-            print(
-                "[COORDINATOR] "
-                f"Persisted artifacts: "
-                f"{reconciliation.persisted_artifact_ids}"
-            )
-
-            # --------------------------------------------------
-            # The reconciler has updated readiness.
-            #
-            # Loop back and compute the next wave.
-            # --------------------------------------------------
+        print(
+            "\n[COORDINATOR] "
+            "Wave boundary reached. "
+            "Returning control to Runtime/Critic."
+        )
 
         return CoordinatedPlanExecution(
             plan=plan,
-            task_results=all_task_results,
+            task_results=results,
         )

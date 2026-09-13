@@ -183,9 +183,9 @@ class TaskWorker:
 
             executor_output: ExecutorOutput = await call_nvidia(
                 prompt,
-                # "openai/gpt-oss-20b",
+                "openai/gpt-oss-20b",
                 # "moonshotai/kimi-k3",
-                "poolside/laguna-xs-2.1",
+                # "poolside/laguna-xs-2.1",
                 # "nvidia/nemotron-3-super-120b-a12b",
                 subagent=True,
                 state_model=ExecutorOutput,

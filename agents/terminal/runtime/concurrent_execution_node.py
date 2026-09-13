@@ -24,18 +24,24 @@ async def concurrent_execution_node(
     state: TerminalState,
 ) -> dict:
     """
-    Execute the current TaskPlan through the concurrent
-    task-execution coordinator.
+    Execute exactly one concurrent execution wave.
 
-    This node is the graph boundary for concurrent execution.
+    This node is the graph boundary between:
+
+        concurrent worker execution
+                ↓
+        wave reconciliation
+                ↓
+              Critic
+
+    The coordinator intentionally executes only the current READY
+    wave. Newly-ready dependent tasks are returned to the Runtime
+    rather than being automatically executed in this invocation.
 
     Workers operate on isolated task-local snapshots.
 
     The coordinator/reconciler owns the authoritative state
-    transition after the complete execution wave.
-
-    This node therefore MUST explicitly return the authoritative
-    state produced by reconciliation.
+    transition after the complete wave.
     """
 
     task_plan = state.get(
@@ -64,10 +70,9 @@ async def concurrent_execution_node(
 
     print()
     print("=" * 72)
-    print("              CONCURRENT EXECUTION START")
+    print("              CONCURRENT WAVE START")
     print("=" * 72)
 
-    print()
     print(
         f"Plan: {task_plan.plan_id}"
     )
@@ -84,12 +89,12 @@ async def concurrent_execution_node(
 
     print()
     print(
-        "Ready tasks in current plan: "
+        "READY tasks admitted for this wave: "
         f"{len(ready_tasks)}"
     )
 
     print(
-        "Ready task IDs: "
+        "READY task IDs: "
         f"{[task.task_id for task in ready_tasks]}"
     )
 
@@ -99,16 +104,15 @@ async def concurrent_execution_node(
 
     print()
     print("=" * 72)
-    print("              WAITING FOR WORKERS")
+    print("              EXECUTING CURRENT WAVE")
     print("=" * 72)
 
     # ==========================================================
     # Build concurrent execution stack
     # ==========================================================
     #
-    # The executor now creates an isolated Worker/Runner stack
-    # per task. The runner supplied here is only retained for
-    # interface compatibility.
+    # ConcurrentTaskExecutor creates an isolated Worker/Runner
+    # execution stack for every task in the wave.
     # ==========================================================
 
     executor = ConcurrentTaskExecutor(
@@ -123,7 +127,7 @@ async def concurrent_execution_node(
     )
 
     # ==========================================================
-    # Execute dependency-aware waves
+    # Execute ONE dependency-aware wave
     # ==========================================================
 
     coordinated_execution = (
@@ -136,7 +140,7 @@ async def concurrent_execution_node(
     updated_plan = coordinated_execution.plan
 
     # ==========================================================
-    # Build deterministic plan-level execution snapshot
+    # Build deterministic post-wave execution snapshot
     # ==========================================================
 
     plan_execution_outcome = (
@@ -149,16 +153,16 @@ async def concurrent_execution_node(
     )
 
     # ==========================================================
-    # Execution finished
+    # Wave finished
     # ==========================================================
 
     print()
     print("=" * 72)
-    print("              CONCURRENT EXECUTION END")
+    print("              CONCURRENT WAVE END")
     print("=" * 72)
 
     print()
-    print("Completed workers:")
+    print("Wave results:")
 
     for result in coordinated_execution.task_results:
 
@@ -169,14 +173,25 @@ async def concurrent_execution_node(
             f"{len(result.processing_results)}"
         )
 
+    newly_ready = [
+        task
+        for task in updated_plan.tasks
+        if task.status.value == "ready"
+    ]
+
     print()
     print(
-        "Plan condition: "
+        "READY tasks after reconciliation: "
+        f"{[task.task_id for task in newly_ready]}"
+    )
+
+    print(
+        "Plan condition after wave: "
         f"{plan_execution_outcome.condition.value}"
     )
 
     print(
-        "Active memory after reconciliation:"
+        "Active memory after wave reconciliation:"
     )
 
     active_memory = state.get(
@@ -212,7 +227,15 @@ async def concurrent_execution_node(
         )
 
     # ==========================================================
-    # Move Runtime into REVIEWING
+    # MOVE RUNTIME INTO REVIEWING
+    # ==========================================================
+    #
+    # This is the critical synchronization boundary.
+    #
+    # Even when reconciliation makes a dependent task READY,
+    # that task is NOT executed here.
+    #
+    # The graph returns to the Critic first.
     # ==========================================================
 
     next_stage = RuntimeKernel.handle_event(
@@ -222,7 +245,7 @@ async def concurrent_execution_node(
 
     print()
     print(
-        "[CONCURRENT EXECUTION] "
+        "[CONCURRENT WAVE] "
         "Runtime transition:"
     )
 
@@ -250,20 +273,8 @@ async def concurrent_execution_node(
     # AUTHORITATIVE GRAPH STATE PROPAGATION
     # ==========================================================
     #
-    # This is important.
-    #
     # The reconciler has already mutated these objects.
-    # Explicitly returning them makes the concurrent execution
-    # node's graph contract unambiguous.
-    #
-    # In particular:
-    #
-    #     active_memory
-    #     artifact_references
-    #     execution_memory
-    #
-    # must survive the concurrent_execution → consistency →
-    # critic boundary.
+    # Return the authoritative post-wave state explicitly.
     # ==========================================================
 
     return {

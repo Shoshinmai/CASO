@@ -9,13 +9,20 @@ def validate_critic_output(
     critic_output: CriticOutput,
 ) -> CriticOutput:
     """
-    Deterministically validate the semantic contract of a
+    Deterministically validate the structural contract of a
     CriticOutput.
 
-    This function does not decide whether the Critic's decision
-    is correct. It only verifies that the decision can be safely
-    passed to the Runtime.
+    This function does not decide whether the Critic's semantic
+    decision is correct.
+
+    In particular, evidence sufficiency is NOT measured by a fixed
+    evidence count. A single authoritative observation may be
+    sufficient for a small, self-contained objective.
     """
+
+    # ==========================================================
+    # Basic output contract
+    # ==========================================================
 
     if not critic_output.rationale.strip():
         raise ValueError(
@@ -54,9 +61,6 @@ def validate_critic_output(
     # ----------------------------------------------------------
     # TASK-SCOPED DECISIONS
     # ----------------------------------------------------------
-    #
-    # These decisions operate on explicitly identified tasks.
-    # ----------------------------------------------------------
 
     task_scoped_decisions = {
         CriticDecision.TASK_COMPLETED,
@@ -66,24 +70,16 @@ def validate_critic_output(
     # ----------------------------------------------------------
     # PLAN-SCOPED DECISIONS
     # ----------------------------------------------------------
-    #
-    # CONTINUE_TASK is allowed at PLAN scope for concurrent
-    # execution.
-    #
-    # It means:
-    #
-    #     continue the rolling plan
-    #
-    # rather than:
-    #
-    #     continue one explicitly targeted task.
-    # ----------------------------------------------------------
 
     plan_scoped_decisions = {
         CriticDecision.CONTINUE_TASK,
         CriticDecision.PLAN_UPDATE_REQUIRED,
         CriticDecision.REPLAN_REQUIRED,
     }
+
+    # ----------------------------------------------------------
+    # GOAL-SCOPED DECISIONS
+    # ----------------------------------------------------------
 
     goal_scoped_decisions = {
         CriticDecision.GOAL_COMPLETED,
@@ -150,19 +146,35 @@ def validate_critic_output(
                 f"Critic decision '{decision.value}' must not "
                 "contain target_task_ids."
             )
+
     # ==========================================================
     # GOAL COMPLETION EVIDENCE CONTRACT
     # ==========================================================
     #
-    # GOAL_COMPLETED is the terminal semantic decision.
+    # GOAL_COMPLETED remains a semantic decision owned by the
+    # Critic.
     #
-    # The Runtime does not independently understand the Critic's
-    # rationale, so require the Critic to explicitly provide
-    # concrete completion evidence when making this decision.
+    # The validator does NOT attempt to independently determine
+    # whether the user's goal is complete.
     #
-    # This does NOT prove the decision is semantically correct.
-    # It prevents an unsupported empty/generic GOAL_COMPLETED
-    # response from reaching the Runtime.
+    # It only ensures that:
+    #
+    #   1. evidence exists,
+    #   2. the Critic's evidence contains a concrete observation
+    #      related to completion,
+    #   3. the Critic does not explicitly justify completion only
+    #      from TaskPlan exhaustion.
+    #
+    # There is intentionally NO fixed evidence-count requirement.
+    #
+    # A single authoritative result can be sufficient:
+    #
+    #   "Determine current working directory"
+    #
+    #   run_terminal -> D:\AI_dev\CASO
+    #
+    # Conversely, a complex investigation may require several
+    # observations. That determination belongs to the Critic.
     # ==========================================================
 
     if decision == CriticDecision.GOAL_COMPLETED:
@@ -181,11 +193,13 @@ def validate_critic_output(
             .lower()
         )
 
-        if len(critic_output.evidence) < 2:
-            raise ValueError(
-                "GOAL_COMPLETED requires at least two "
-                "independent pieces of evidence."
-            )
+        # ------------------------------------------------------
+        # Completion evidence must say something meaningful
+        # about completion.
+        #
+        # We intentionally do NOT require multiple pieces of
+        # evidence. One authoritative observation is valid.
+        # ------------------------------------------------------
 
         completion_markers = (
             "completed",
@@ -197,6 +211,10 @@ def validate_critic_output(
             "exists",
             "generated",
             "delivered",
+            "identified",
+            "determined",
+            "confirmed",
+            "found",
         )
 
         has_completion_evidence = any(
@@ -207,21 +225,56 @@ def validate_critic_output(
         if not has_completion_evidence:
             raise ValueError(
                 "GOAL_COMPLETED evidence does not contain "
-                "an explicit completion observation."
+                "an explicit observation supporting completion."
             )
 
+        # ------------------------------------------------------
+        # Prevent the Critic from using plan exhaustion itself
+        # as the semantic proof of goal completion.
+        #
+        # This still allows a plan-exhausted review to conclude
+        # GOAL_COMPLETED when the evidence actually establishes
+        # the goal.
+        # ------------------------------------------------------
+
+        plan_completion_markers = (
+            "plan completed",
+            "all planned tasks completed",
+            "plan exhausted",
+            "no tasks remain",
+            "all tasks completed",
+        )
+
+        has_plan_completion_signal = any(
+            marker in evidence_text
+            for marker in plan_completion_markers
+        )
+
+        explicit_goal_markers = (
+            "goal completed",
+            "goal achieved",
+            "goal satisfied",
+            "request satisfied",
+            "overall goal",
+            "user goal",
+            "required result",
+            "required deliverable",
+        )
+
+        has_explicit_goal_signal = any(
+            marker in evidence_text
+            or marker in rationale
+            for marker in explicit_goal_markers
+        )
+
         if (
-            "plan completed" in rationale
-            and not (
-                "goal completed" in rationale
-                or "goal achieved" in rationale
-                or "goal satisfied" in rationale
-            )
+            has_plan_completion_signal
+            and not has_explicit_goal_signal
+            and not has_completion_evidence
         ):
             raise ValueError(
-                "GOAL_COMPLETED rationale appears to rely only "
-                "on plan completion rather than explicit "
-                "overall-goal completion."
+                "GOAL_COMPLETED cannot be justified solely by "
+                "TaskPlan completion or exhaustion."
             )
-            
+
     return critic_output

@@ -55,7 +55,7 @@ def build_task_execution_snapshot(
         ),
 
         "task": deepcopy(
-            state["task"]
+            task
         ),
 
         "goal": state["goal"],

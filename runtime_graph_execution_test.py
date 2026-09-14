@@ -151,9 +151,10 @@ async def test_d6_3_concurrent_critic_integration():
 
     initial_state = {
         "goal": (
-            "Inspect this project's agents/terminal implementation "
-            "and determine whether the current concurrent execution "
-            "and Critic flow correctly handles independent tasks. Make the report of your finding in a markdown format."
+            # "Inspect this project's agents/terminal implementation "
+            # "and determine whether the current concurrent execution "
+            # "and Critic flow correctly handles independent tasks. Make the report of your finding in a markdown format."
+            "what is the current path you are working on?"
         ),
     }
 

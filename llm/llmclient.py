@@ -1,7 +1,10 @@
 # import google.generativeai as genai
+
 import json
 import re
 import os
+from typing import Any, Optional
+
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
@@ -9,7 +12,9 @@ from langchain_ollama import ChatOllama
 from langchain_groq import ChatGroq
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.exceptions import OutputParserException
+
 from agents.terminal.tools import TOOLS
+
 import requests
 from tenacity import (
     retry,
@@ -18,91 +23,279 @@ from tenacity import (
     retry_if_exception_type,
 )
 
+
 load_dotenv()
-# genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-# client1 = genai.Client()
 
 
-# model = genai.GenerativeModel("gemini-2.5-flash")
+# ==============================================================
+# LLM CALL HELPERS
+# ==============================================================
 
 
-# def call_gemini(prompt: str) -> str:
-#     # response = model.generate_content(prompt)
-#     response = client1.models.generate_content(
-#         # model='gemini-2.5-flash',
-#         model="gemini-2.5-flash",
-#         contents=prompt,
-#     )
-#     return response.text
+def call_groq(
+    prompt: str,
+    subagent=False,
+    state_model=None,
+) -> str:
 
+    llm = ChatGroq(
+        model="groq/compound-mini",
+        temperature=1.0,
+        max_tokens=1024,
+    )
 
-def call_groq(prompt: str, subagent=False, state_model=None) -> str:
-    llm = ChatGroq(model="groq/compound-mini", temperature=1.0, max_tokens=1024)
     if subagent:
-        structured_llm = llm.with_structured_output(state_model)
-        action = structured_llm.invoke([HumanMessage(content=prompt)])
+        structured_llm = llm.with_structured_output(
+            state_model
+        )
+
+        action = structured_llm.invoke(
+            [HumanMessage(content=prompt)]
+        )
+
         return action
 
-    res = llm.invoke([HumanMessage(content=prompt)])
+    res = llm.invoke(
+        [HumanMessage(content=prompt)]
+    )
+
     return res.content
 
 
-# def call_ollama(
-#     prompt: str, model: str, subagent=False, state_model=None, tool=False
-# ) -> str:
+# ==============================================================
+# STRUCTURED OUTPUT CLEANING
+# ==============================================================
 
-#     llm = ChatOllama(
-#         model=model,
-#         temperature=0.0,
-#         num_ctx=16384,
-#         num_predict=1024,
-#         num_gpu=99,
-#         low_vram=True,
-#         keep_alive=0,
-#     )
-#     if subagent:
-#         # structured_llm = llm.with_structured_output(state_model)
-#         structured_llm = llm.with_structured_output(state_model)
-#         action = structured_llm.invoke(prompt)
-#         return action
 
-#     elif tool:
-#         llm_with_tools = llm.bind_tools(TOOLS)
-#         # print(type(llm))
-#         # print(type(llm_with_tools))
-#         return llm_with_tools.invoke(prompt)
+def _remove_thinking_blocks(content: str) -> str:
+    """
+    Remove common reasoning/thinking blocks emitted by local
+    reasoning models.
 
-#     res = llm.invoke(prompt)
-#     res.pretty_print()
-#     return res.content
+    Handles:
+        <think>...</think>
+        <thinking>...</thinking>
+        <reasoning>...</reasoning>
+    """
 
-# def call_nvidia(prompt: str, model: str, subagent=False, state_model=None, tool=False):
-#     llm = ChatNVIDIA(
-#     model=model,
-#     temperature=0.2,
-#     timeout= 100,
-#     top_p=0.95,
-#     max_completion_tokens=16384,
-#     )
-#     if subagent:
-#         structured_llm = llm.with_structured_output(state_model)
-#         # print(state_model)
-#         # print(state_model.model_json_schema())
-#         action = structured_llm.invoke(prompt)
-#         return action
+    if not content:
+        return ""
 
-#     elif tool:
-#         llm_with_tools = llm.bind_tools(TOOLS)
-#         # print(type(llm))
-#         # print(type(llm_with_tools))
-#         return llm_with_tools.invoke(prompt)
-#     res = llm.invoke(prompt)
-#     return res.content
+    cleaned = content
 
-# print(call_nvidia("what can you do?", "nvidia/nemotron-3-ultra-550b-a55b"))
+    patterns = (
+        r"<think>.*?</think>",
+        r"<thinking>.*?</thinking>",
+        r"<reasoning>.*?</reasoning>",
+    )
 
-# print(call_ollama("what can you do? and who are you exactly", "qwen2.5:7b-instruct-q3_K_M"))
-# print(call_groq("what can you do?"))
+    for pattern in patterns:
+        cleaned = re.sub(
+            pattern,
+            "",
+            cleaned,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+
+    return cleaned.strip()
+
+
+def _remove_markdown_fences(content: str) -> str:
+    """
+    Remove markdown code fences without assuming that the entire
+    response consists of a single fenced block.
+    """
+
+    if not content:
+        return ""
+
+    cleaned = content.strip()
+
+    cleaned = re.sub(
+        r"```(?:json|JSON)?\s*",
+        "",
+        cleaned,
+    )
+
+    cleaned = re.sub(
+        r"\s*```",
+        "",
+        cleaned,
+    )
+
+    return cleaned.strip()
+
+
+def _normalize_structured_output(content: str) -> str:
+    """
+    Perform safe, non-semantic normalization before parsing.
+    """
+
+    if not content:
+        return ""
+
+    cleaned = _remove_thinking_blocks(content)
+
+    cleaned = _remove_markdown_fences(cleaned)
+
+    # Remove common leading labels.
+    cleaned = re.sub(
+        r"^\s*(?:json|JSON)\s*:\s*",
+        "",
+        cleaned,
+    )
+
+    return cleaned.strip()
+
+
+# ==============================================================
+# BALANCED JSON EXTRACTION
+# ==============================================================
+
+
+def _extract_balanced_json_candidates(
+    content: str,
+) -> list[str]:
+    """
+    Extract balanced JSON objects/arrays from arbitrary model text.
+
+    Unlike:
+
+        re.search(r"(\{.*})", ...)
+
+    this parser understands:
+        - nested objects
+        - nested arrays
+        - braces inside JSON strings
+        - escaped quotes
+        - multiple JSON candidates
+    """
+
+    candidates: list[str] = []
+
+    if not content:
+        return candidates
+
+    opening_to_closing = {
+        "{": "}",
+        "[": "]",
+    }
+
+    stack: list[str] = []
+
+    start_index: Optional[int] = None
+
+    in_string = False
+    escaped = False
+
+    for index, char in enumerate(content):
+
+        if in_string:
+
+            if escaped:
+                escaped = False
+                continue
+
+            if char == "\\":
+                escaped = True
+                continue
+
+            if char == '"':
+                in_string = False
+
+            continue
+
+        if char == '"':
+            in_string = True
+            continue
+
+        if char in opening_to_closing:
+
+            if not stack:
+                start_index = index
+
+            stack.append(
+                opening_to_closing[char]
+            )
+
+            continue
+
+        if char in "}]":
+
+            if not stack:
+                continue
+
+            if char != stack[-1]:
+
+                # Invalid nesting. Reset this candidate.
+                stack.clear()
+                start_index = None
+                continue
+
+            stack.pop()
+
+            if not stack and start_index is not None:
+
+                candidate = content[
+                    start_index : index + 1
+                ].strip()
+
+                if candidate:
+                    candidates.append(candidate)
+
+                start_index = None
+
+    return candidates
+
+
+# ==============================================================
+# JSON CANDIDATE VALIDATION
+# ==============================================================
+
+
+def _try_json_loads(
+    candidate: str,
+) -> Optional[Any]:
+    """
+    Safely decode one JSON candidate.
+    """
+
+    try:
+        return json.loads(candidate)
+
+    except (
+        json.JSONDecodeError,
+        TypeError,
+        ValueError,
+    ):
+        return None
+
+
+def _validate_candidate(
+    parser: PydanticOutputParser,
+    candidate: str,
+):
+    """
+    Convert a JSON candidate into the requested Pydantic model.
+    """
+
+    data = _try_json_loads(candidate)
+
+    if data is None:
+        return None
+
+    try:
+        return parser.pydantic_object.model_validate(
+            data
+        )
+
+    except Exception:
+        return None
+
+
+# ==============================================================
+# ROBUST STRUCTURED OUTPUT PARSER
+# ==============================================================
 
 
 async def _robust_pydantic_parse_async(
@@ -111,95 +304,408 @@ async def _robust_pydantic_parse_async(
     llm_instance=None,
     original_prompt: str = "",
 ):
-    """Async version of robust structured-output parsing."""
+    """
+    Robust async parser for LLM structured output.
 
-    if not raw_content or not raw_content.strip():
-        raw_content = "{}"
+    Parsing strategy:
 
-    raw_content = re.sub(
-        r"<think>.*?</think>",
-        "",
-        raw_content,
-        flags=re.DOTALL,
-    ).strip()
+        1. Direct Pydantic parser
+        2. Normalized direct Pydantic parser
+        3. Direct JSON decode
+        4. Balanced JSON extraction
+        5. Candidate-by-candidate Pydantic validation
+        6. Bounded healing attempt 1
+        7. Bounded healing attempt 2
+        8. Raise OutputParserException
+
+    The parser never silently fabricates missing data.
+    """
+
+    if not raw_content:
+        raw_content = ""
+
+    # ----------------------------------------------------------
+    # Preserve original output for diagnostics.
+    # ----------------------------------------------------------
+
+    original_content = raw_content
+
+    # ----------------------------------------------------------
+    # Stage 1
+    # Direct parser
+    # ----------------------------------------------------------
 
     try:
-        return parser.parse(raw_content)
+        return parser.parse(
+            raw_content.strip()
+        )
 
     except Exception:
+        pass
+
+    # ----------------------------------------------------------
+    # Stage 2
+    # Normalize reasoning/fences/labels.
+    # ----------------------------------------------------------
+
+    normalized_content = (
+        _normalize_structured_output(
+            raw_content
+        )
+    )
+
+    if normalized_content:
 
         try:
-            match = re.search(
-                r"(\{.*})",
-                raw_content,
-                re.DOTALL,
+            return parser.parse(
+                normalized_content
             )
-
-            if match:
-                clean_json_str = match.group(1)
-
-                json_dict = json.loads(clean_json_str)
-
-                return parser.pydantic_object.model_validate(json_dict)
 
         except Exception:
             pass
 
-        if llm_instance and original_prompt:
+    # ----------------------------------------------------------
+    # Stage 3
+    # Try the entire normalized response as JSON.
+    # ----------------------------------------------------------
 
-            print(
-                "\n🔄 [Parsing Failure] "
-                "Model output is invalid JSON. "
-                "Triggering automatic healing..."
-            )
+    if normalized_content:
 
-            correction_prompt = (
-                f"You are a strict data-fixing agent. "
-                f"The user prompt was:\n###\n"
-                f"{original_prompt}\n###\n\n"
-                f"The model replied with invalid layout text:"
-                f"\n###\n{raw_content}\n###\n\n"
-                f"Fix it completely. Return ONLY valid JSON "
-                f"adhering strictly to this schema instruction. "
-                f"Do not include thoughts, introduction, or text "
-                f"outside the JSON:\n"
-                f"{parser.get_format_instructions()}"
-            )
+        decoded = _try_json_loads(
+            normalized_content
+        )
+
+        if decoded is not None:
 
             try:
-                fixed_res = await llm_instance.ainvoke(correction_prompt)
-
-                fixed_content = re.sub(
-                    r"<think>.*?</think>",
-                    "",
-                    fixed_res.content,
-                    flags=re.DOTALL,
-                ).strip()
-
-                match_fixed = re.search(
-                    r"(\{.*})",
-                    fixed_content,
-                    re.DOTALL,
+                return parser.pydantic_object.model_validate(
+                    decoded
                 )
 
-                if match_fixed:
-                    return parser.pydantic_object.model_validate(
-                        json.loads(match_fixed.group(1))
-                    )
+            except Exception:
+                pass
 
-                return parser.parse(fixed_content)
+    # ----------------------------------------------------------
+    # Stage 4
+    # Extract balanced JSON candidates.
+    # ----------------------------------------------------------
 
-            except Exception as healing_err:
-
-                print(
-                    f"❌ [Healing Failed] "
-                    f"Auto-correction loop failed: "
-                    f"{healing_err}"
-                )
-
-        raise OutputParserException(
-            "Failed to parse or heal output. " f"Raw text: {raw_content}"
+    candidates = (
+        _extract_balanced_json_candidates(
+            normalized_content
         )
+    )
+
+    # Prefer larger candidates first.
+    candidates.sort(
+        key=len,
+        reverse=True,
+    )
+
+    for candidate in candidates:
+
+        parsed = _validate_candidate(
+            parser,
+            candidate,
+        )
+
+        if parsed is not None:
+            return parsed
+
+    # ----------------------------------------------------------
+    # Stage 5
+    # Healing
+    # ----------------------------------------------------------
+
+    if llm_instance and original_prompt:
+
+        print(
+            "\n🔄 [Parsing Failure] "
+            "Structured output could not be parsed. "
+            "Starting automatic healing..."
+        )
+
+        healed = await _heal_structured_output_async(
+            parser=parser,
+            llm_instance=llm_instance,
+            original_prompt=original_prompt,
+            raw_content=original_content,
+        )
+
+        if healed is not None:
+            return healed
+
+    raise OutputParserException(
+        "Failed to parse or heal structured output.\n\n"
+        f"Raw model output:\n{original_content}"
+    )
+
+
+# ==============================================================
+# STRUCTURED OUTPUT HEALER
+# ==============================================================
+
+
+async def _heal_structured_output_async(
+    parser: PydanticOutputParser,
+    llm_instance,
+    original_prompt: str,
+    raw_content: str,
+):
+    """
+    Multi-stage bounded structured-output healer.
+
+    Attempt 1:
+        Repair the exact malformed response.
+
+    Attempt 2:
+        Reconstruct the required schema from the original
+        response while preserving its information.
+
+    Every healed response is passed through the same local
+    deterministic parser before being accepted.
+    """
+
+    format_instructions = (
+        parser.get_format_instructions()
+    )
+
+    # ==========================================================
+    # HEALING ATTEMPT 1
+    # Precise repair
+    # ==========================================================
+
+    repair_prompt = f"""
+You are a JSON repair engine.
+
+Your task is to repair the model output below so that it becomes
+valid JSON matching the required Pydantic schema.
+
+IMPORTANT RULES:
+
+1. Preserve the original information.
+2. Do not invent facts.
+3. Do not remove required information.
+4. Do not explain your changes.
+5. Do not include markdown.
+6. Do not include code fences.
+7. Return ONLY the JSON object.
+8. The result must be valid JSON.
+9. Follow the schema exactly.
+
+REQUIRED SCHEMA:
+{format_instructions}
+
+ORIGINAL REQUEST:
+{original_prompt}
+
+MALFORMED MODEL OUTPUT:
+{raw_content}
+
+Return ONLY the corrected JSON object.
+""".strip()
+
+    try:
+
+        repair_response = (
+            await llm_instance.ainvoke(
+                repair_prompt
+            )
+        )
+
+        repaired_content = getattr(
+            repair_response,
+            "content",
+            "",
+        )
+
+        parsed = _parse_healed_content(
+            parser,
+            repaired_content,
+        )
+
+        if parsed is not None:
+
+            print(
+                "✅ [Healing] "
+                "Structured output repaired successfully "
+                "on attempt 1."
+            )
+
+            return parsed
+
+    except Exception as repair_error:
+
+        print(
+            "⚠️ [Healing Attempt 1 Failed] "
+            f"{repair_error}"
+        )
+
+    # ==========================================================
+    # HEALING ATTEMPT 2
+    # Schema reconstruction
+    # ==========================================================
+
+    reconstruction_prompt = f"""
+You are a strict structured-output reconstruction engine.
+
+The previous model response failed schema validation.
+
+Reconstruct the response using ONLY information contained in
+the original model output.
+
+Do NOT:
+- invent information,
+- add assumptions,
+- add explanations,
+- add markdown,
+- add code fences,
+- change the meaning,
+- omit information that is required by the schema.
+
+You MUST:
+- produce one valid JSON object,
+- satisfy the schema,
+- preserve the original meaning,
+- use null/default values only where the schema explicitly allows
+  them.
+
+REQUIRED SCHEMA:
+{format_instructions}
+
+ORIGINAL REQUEST:
+{original_prompt}
+
+PREVIOUS MODEL OUTPUT:
+{raw_content}
+
+Return ONLY the final JSON object.
+""".strip()
+
+    try:
+
+        reconstruction_response = (
+            await llm_instance.ainvoke(
+                reconstruction_prompt
+            )
+        )
+
+        reconstructed_content = getattr(
+            reconstruction_response,
+            "content",
+            "",
+        )
+
+        parsed = _parse_healed_content(
+            parser,
+            reconstructed_content,
+        )
+
+        if parsed is not None:
+
+            print(
+                "✅ [Healing] "
+                "Structured output reconstructed successfully "
+                "on attempt 2."
+            )
+
+            return parsed
+
+    except Exception as reconstruction_error:
+
+        print(
+            "⚠️ [Healing Attempt 2 Failed] "
+            f"{reconstruction_error}"
+        )
+
+    print(
+        "❌ [Healing Failed] "
+        "All structured-output healing attempts failed."
+    )
+
+    return None
+
+
+def _parse_healed_content(
+    parser: PydanticOutputParser,
+    content: str,
+):
+    """
+    Parse healed model output using the same robust local
+    extraction rules as normal model output.
+    """
+
+    if not content:
+        return None
+
+    normalized = (
+        _normalize_structured_output(
+            content
+        )
+    )
+
+    # ----------------------------------------------------------
+    # Direct Pydantic parsing
+    # ----------------------------------------------------------
+
+    try:
+        return parser.parse(
+            normalized
+        )
+
+    except Exception:
+        pass
+
+    # ----------------------------------------------------------
+    # Entire-response JSON
+    # ----------------------------------------------------------
+
+    decoded = _try_json_loads(
+        normalized
+    )
+
+    if decoded is not None:
+
+        try:
+            return parser.pydantic_object.model_validate(
+                decoded
+            )
+
+        except Exception:
+            pass
+
+    # ----------------------------------------------------------
+    # Balanced candidates
+    # ----------------------------------------------------------
+
+    candidates = (
+        _extract_balanced_json_candidates(
+            normalized
+        )
+    )
+
+    candidates.sort(
+        key=len,
+        reverse=True,
+    )
+
+    for candidate in candidates:
+
+        parsed = _validate_candidate(
+            parser,
+            candidate,
+        )
+
+        if parsed is not None:
+            return parsed
+
+    return None
+
+
+# ==============================================================
+# STREAMING
+# ==============================================================
+
 
 async def _stream_llm_response(
     llm,
@@ -207,21 +713,27 @@ async def _stream_llm_response(
     show_reasoning: bool = True,
 ) -> str:
     """
-    Stream an LLM response live while accumulating the final content.
-
-    Returns:
-        The complete accumulated response content.
+    Stream an LLM response live while accumulating the final
+    content.
     """
 
     full_content = ""
 
-    async for chunk in llm.astream(prompt):
+    async for chunk in llm.astream(
+        prompt
+    ):
 
-        reasoning_chunk = chunk.additional_kwargs.get(
-            "reasoning_content"
+        reasoning_chunk = (
+            chunk.additional_kwargs.get(
+                "reasoning_content"
+            )
         )
 
-        if show_reasoning and reasoning_chunk:
+        if (
+            show_reasoning
+            and reasoning_chunk
+        ):
+
             print(
                 reasoning_chunk,
                 end="",
@@ -229,6 +741,7 @@ async def _stream_llm_response(
             )
 
         if chunk.content:
+
             print(
                 chunk.content,
                 end="",
@@ -238,6 +751,12 @@ async def _stream_llm_response(
             full_content += chunk.content
 
     return full_content
+
+
+# ==============================================================
+# OLLAMA
+# ==============================================================
+
 
 async def call_ollama(
     prompt: str,
@@ -289,10 +808,12 @@ async def call_ollama(
             "Thinking process started:\n"
         )
 
-        full_content = await _stream_llm_response(
-            llm=llm,
-            prompt=structured_prompt,
-            show_reasoning=True,
+        full_content = (
+            await _stream_llm_response(
+                llm=llm,
+                prompt=structured_prompt,
+                show_reasoning=True,
+            )
         )
 
         print(
@@ -301,8 +822,8 @@ async def call_ollama(
         )
 
         return await _robust_pydantic_parse_async(
-            parser,
-            full_content,
+            parser=parser,
+            raw_content=full_content,
             llm_instance=llm,
             original_prompt=structured_prompt,
         )
@@ -332,6 +853,11 @@ async def call_ollama(
         prompt=prompt,
         show_reasoning=True,
     )
+
+
+# ==============================================================
+# NVIDIA
+# ==============================================================
 
 
 @retry(
@@ -383,10 +909,12 @@ async def _aexecute_nvidia_call(
             "Thinking process started:\n"
         )
 
-        full_content = await _stream_llm_response(
-            llm=llm,
-            prompt=structured_prompt,
-            show_reasoning=True,
+        full_content = (
+            await _stream_llm_response(
+                llm=llm,
+                prompt=structured_prompt,
+                show_reasoning=True,
+            )
         )
 
         print(
@@ -395,8 +923,8 @@ async def _aexecute_nvidia_call(
         )
 
         return await _robust_pydantic_parse_async(
-            parser,
-            full_content,
+            parser=parser,
+            raw_content=full_content,
             llm_instance=llm,
             original_prompt=structured_prompt,
         )
@@ -425,6 +953,7 @@ async def _aexecute_nvidia_call(
         show_reasoning=True,
     )
 
+
 async def call_nvidia(
     prompt: str,
     model: str,
@@ -432,6 +961,7 @@ async def call_nvidia(
     state_model=None,
     tool=False,
 ):
+
     try:
 
         return await _aexecute_nvidia_call(
@@ -455,6 +985,13 @@ async def call_nvidia(
             # "freehuntx/qwen3-coder:8b"
         )
 
+        # ------------------------------------------------------
+        # INTENTIONALLY PRESERVED
+        #
+        # The fallback behavior below is left exactly as the
+        # existing implementation intentionally defines it.
+        # ------------------------------------------------------
+
         return await call_nvidia(
             prompt=prompt,
             model=fallback_local_model,
@@ -462,10 +999,3 @@ async def call_nvidia(
             state_model=state_model,
             tool=tool,
         )
-        # return await call_ollama(
-        #     prompt=prompt,
-        #     model=fallback_local_model,
-        #     subagent=subagent,
-        #     state_model=state_model,
-        #     tool=tool,
-        # )

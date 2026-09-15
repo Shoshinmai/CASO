@@ -12,12 +12,16 @@ def validate_critic_output(
     Deterministically validate the structural contract of a
     CriticOutput.
 
-    This function does not decide whether the Critic's semantic
-    decision is correct.
+    This validator is intentionally structural only.
 
-    In particular, evidence sufficiency is NOT measured by a fixed
-    evidence count. A single authoritative observation may be
-    sufficient for a small, self-contained objective.
+    It does NOT attempt to determine whether the Critic's semantic
+    decision is correct or whether the supplied evidence is
+    sufficient to establish the user's goal.
+
+    Evidence sufficiency is a semantic judgment owned by the Critic.
+    A single authoritative observation may be sufficient for a
+    small, self-contained task, while a broader task may require
+    multiple observations.
     """
 
     # ==========================================================
@@ -104,7 +108,6 @@ def validate_critic_output(
             )
 
         for task_id in targets:
-
             if not task_id.strip():
                 raise ValueError(
                     "Critic target_task_ids cannot contain "
@@ -148,133 +151,32 @@ def validate_critic_output(
             )
 
     # ==========================================================
-    # GOAL COMPLETION EVIDENCE CONTRACT
+    # No semantic evidence validation here.
     # ==========================================================
     #
-    # GOAL_COMPLETED remains a semantic decision owned by the
-    # Critic.
+    # The Critic is responsible for deciding whether the supplied
+    # evidence is sufficient for its semantic decision.
     #
-    # The validator does NOT attempt to independently determine
-    # whether the user's goal is complete.
+    # The validator only guarantees that evidence exists and is
+    # structurally valid.
     #
-    # It only ensures that:
+    # Therefore:
     #
-    #   1. evidence exists,
-    #   2. the Critic's evidence contains a concrete observation
-    #      related to completion,
-    #   3. the Critic does not explicitly justify completion only
-    #      from TaskPlan exhaustion.
+    #   1 evidence item  -> valid
+    #   2 evidence items -> valid
+    #   N evidence items -> valid
     #
-    # There is intentionally NO fixed evidence-count requirement.
+    # provided each item has a source and observation.
     #
-    # A single authoritative result can be sufficient:
+    # GOAL_COMPLETED specifically does NOT require:
     #
-    #   "Determine current working directory"
+    #   - a minimum evidence count,
+    #   - completion keywords,
+    #   - goal-related keywords,
+    #   - plan-exhaustion keywords,
+    #   - or any other deterministic interpretation of prose.
     #
-    #   run_terminal -> D:\AI_dev\CASO
-    #
-    # Conversely, a complex investigation may require several
-    # observations. That determination belongs to the Critic.
+    # Semantic evidence sufficiency belongs to the Critic.
     # ==========================================================
-
-    if decision == CriticDecision.GOAL_COMPLETED:
-
-        evidence_text = "\n".join(
-            (
-                f"{item.source}: "
-                f"{item.observation}"
-            )
-            for item in critic_output.evidence
-        ).lower()
-
-        rationale = (
-            critic_output.rationale
-            .strip()
-            .lower()
-        )
-
-        # ------------------------------------------------------
-        # Completion evidence must say something meaningful
-        # about completion.
-        #
-        # We intentionally do NOT require multiple pieces of
-        # evidence. One authoritative observation is valid.
-        # ------------------------------------------------------
-
-        completion_markers = (
-            "completed",
-            "created",
-            "produced",
-            "verified",
-            "achieved",
-            "satisfied",
-            "exists",
-            "generated",
-            "delivered",
-            "identified",
-            "determined",
-            "confirmed",
-            "found",
-        )
-
-        has_completion_evidence = any(
-            marker in evidence_text
-            for marker in completion_markers
-        )
-
-        if not has_completion_evidence:
-            raise ValueError(
-                "GOAL_COMPLETED evidence does not contain "
-                "an explicit observation supporting completion."
-            )
-
-        # ------------------------------------------------------
-        # Prevent the Critic from using plan exhaustion itself
-        # as the semantic proof of goal completion.
-        #
-        # This still allows a plan-exhausted review to conclude
-        # GOAL_COMPLETED when the evidence actually establishes
-        # the goal.
-        # ------------------------------------------------------
-
-        plan_completion_markers = (
-            "plan completed",
-            "all planned tasks completed",
-            "plan exhausted",
-            "no tasks remain",
-            "all tasks completed",
-        )
-
-        has_plan_completion_signal = any(
-            marker in evidence_text
-            for marker in plan_completion_markers
-        )
-
-        explicit_goal_markers = (
-            "goal completed",
-            "goal achieved",
-            "goal satisfied",
-            "request satisfied",
-            "overall goal",
-            "user goal",
-            "required result",
-            "required deliverable",
-        )
-
-        has_explicit_goal_signal = any(
-            marker in evidence_text
-            or marker in rationale
-            for marker in explicit_goal_markers
-        )
-
-        if (
-            has_plan_completion_signal
-            and not has_explicit_goal_signal
-            and not has_completion_evidence
-        ):
-            raise ValueError(
-                "GOAL_COMPLETED cannot be justified solely by "
-                "TaskPlan completion or exhaustion."
-            )
 
     return critic_output

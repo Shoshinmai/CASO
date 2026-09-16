@@ -1158,6 +1158,47 @@ The same rule applies to:
 
 Do not stop at an earlier stage when the objective requires a later one.
 
+--------------------------------------------------
+OVERALL TASK GOAL
+--------------------------------------------------
+
+{task_goal}
+
+This is the user's original goal.
+
+Use it to understand intent and constraints around the Current Objective.
+
+Do NOT expand the Current Objective into strategic work.
+
+--------------------------------------------------
+TASK METADATA
+--------------------------------------------------
+
+{task_metadata}
+
+This may contain:
+
+• priority,
+• dependency state,
+• execution constraints,
+• contextual task information.
+
+Use it for tactical execution only.
+
+Do NOT turn metadata into new strategic objectives.
+
+--------------------------------------------------
+CURRENT OBJECTIVE
+--------------------------------------------------
+
+{objective}
+
+This is the ONLY objective you are executing.
+
+Every workflow step must directly contribute to it.
+
+Do not perform work belonging to another objective.
+
 ==================================================
 CAPABILITY GOVERNANCE
 ==================================================

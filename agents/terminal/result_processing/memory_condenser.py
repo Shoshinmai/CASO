@@ -13,6 +13,8 @@ async def condense_memory(
 ) -> MemoryUpdateProposal:
 
     # parser = PydanticOutputParser(pydantic_object=MemoryUpdateProposal)
+    print("\n[FORMATTED OBSERVATION]")
+    print(formatted_observation)
 
     prompt = MEMORY_CONDENSER_PROMPT.format(
         goal=goal,
@@ -20,8 +22,6 @@ async def condense_memory(
         formatted_observation=formatted_observation,
         tool_name=tool_name,
     )
-    print("\n[FORMATTED OBSERVATION]")
-    print(formatted_observation)
     
     # response = call_ollama(
     #     prompt=prompt,

@@ -1,3 +1,5 @@
+from agents.terminal.result_processing.evidence.extractor import extract_evidence
+
 from agents.terminal.result_processing.memory_condenser import (
     condense_memory,
 )
@@ -101,11 +103,18 @@ async def process_tool_result(
     )
 
     # ==========================================================
-    # 5. Return complete RuntimeProcessingResult
+    # 5. Create Prototype 3 evidence
+    # ==========================================================
+
+    evidence = [extract_evidence(normalized)]
+
+    # ==========================================================
+    # 6. Return complete RuntimeProcessingResult
     # ==========================================================
 
     return RuntimeProcessingResult(
         normalized_result=normalized,
         artifact_decision=artifact_decision,
         memory_update=proposal,
+        evidence=evidence,
     )

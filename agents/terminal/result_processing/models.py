@@ -2,6 +2,8 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 from typing import Any
 
+from agents.terminal.result_processing.evidence.models import EvidenceRecord
+
 class ResourceType(StrEnum):
     FILE = "file"
     DIRECTORY = "directory"
@@ -163,3 +165,8 @@ class RuntimeProcessingResult(BaseModel):
     artifact_decision: ArtifactDecision
 
     memory_update: MemoryUpdateProposal
+    
+    # Prototype 3 information boundary.
+    evidence: list[EvidenceRecord] = Field(
+        default_factory=list,
+    )

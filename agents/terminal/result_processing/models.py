@@ -2,7 +2,7 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 from typing import Any
 
-from agents.terminal.result_processing.evidence.models import EvidenceRecord
+from agents.terminal.evidence.models import EvidenceRecord
 
 class ResourceType(StrEnum):
     FILE = "file"

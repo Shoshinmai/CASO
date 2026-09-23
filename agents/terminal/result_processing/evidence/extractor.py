@@ -1,7 +1,7 @@
 import hashlib
 import json
 
-from agents.terminal.result_processing.evidence.models import (
+from agents.terminal.evidence.models import (
     EvidenceProvenance,
     EvidenceRecord,
     EvidenceSourceType,

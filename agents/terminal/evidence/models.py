@@ -47,3 +47,45 @@ class EvidenceRecord(BaseModel):
     resource_refs: list[str] = Field(default_factory=list)
 
     artifact_ref: str | None = None
+
+class EvidenceRetrievalQuery(BaseModel):
+    """
+    Describes an information request against retained evidence.
+
+    `query` represents the semantic information need.
+    The remaining fields are deterministic constraints.
+    """
+
+    query: str = Field(
+        min_length=1,
+    )
+
+    task_id: str | None = None
+
+    execution_id: str | None = None
+
+    resource_refs: list[str] = Field(
+        default_factory=list,
+    )
+
+    tool_name: str | None = None
+
+    limit: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+    )
+
+
+class EvidenceRetrievalResult(BaseModel):
+    """
+    Result returned by an EvidenceRetriever.
+    """
+
+    query: EvidenceRetrievalQuery
+
+    evidence: list[EvidenceRecord] = Field(
+        default_factory=list,
+    )
+
+    total_candidates: int = 0

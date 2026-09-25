@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from langchain_core.runnables import RunnableConfig
+
+from agents.terminal.evidence.store import InMemoryEvidenceStore
 from agents.terminal.runtime.concurrent_task_executor import (
     ConcurrentTaskExecutor,
 )
@@ -20,9 +23,11 @@ from agents.terminal.task_executor.task_worker import (
 )
 from agents.terminal.task_plan.manager import TaskPlanManager
 
+evidence_store = InMemoryEvidenceStore()
 
 async def concurrent_execution_node(
     state: TerminalState,
+    config: RunnableConfig,
 ) -> dict:
     """
     Execute exactly one concurrent execution wave.
@@ -155,6 +160,36 @@ async def concurrent_execution_node(
             state=state,
         )
     )
+    
+    # ==========================================================
+    # Prototype 3 — Retain execution evidence
+    # ==========================================================
+
+    configurable = config.get(
+        "configurable",
+        {},
+    )
+
+    thread_id = configurable.get(
+        "thread_id",
+    )
+
+    if not thread_id:
+        raise ValueError(
+            "Cannot retain evidence because "
+            "LangGraph config does not contain a thread_id."
+        )
+
+    for task_result in coordinated_execution.task_results:
+
+        for processing_result in task_result.processing_results:
+
+            for evidence in processing_result.evidence:
+
+                await evidence_store.add(
+                    thread_id,
+                    evidence,
+                )
 
     updated_plan = coordinated_execution.plan
 

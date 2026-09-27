@@ -1553,3 +1553,563 @@ Improve
 while keeping the existing execution runtime stable.
 
 **Prototype 3 begins when we turn this principle into the first working Evidence + Provenance implementation.**
+
+
+---
+
+# 34. Prototype 3 Current Status — Evidence Retention Complete
+
+The first evidence-retention vertical slice has now been implemented and validated.
+
+## 34.1 Evidence boundary
+
+The runtime-processing boundary now produces structured `EvidenceRecord` objects from normalized tool results.
+
+Evidence preserves:
+
+- evidence identity,
+- tool provenance,
+- execution attempt,
+- resource references,
+- human-readable content,
+- structured execution data.
+
+The evidence path is deliberately downstream of runtime execution:
+
+```
+Tool Result
+    ↓
+Normalization
+    ↓
+Runtime Processing
+    ↓
+EvidenceRecord
+    ↓
+Evidence Store
+```
+
+The runtime itself remains unchanged.
+
+## 34.2 Evidence storage
+
+The first persistence seam is an `InMemoryEvidenceStore`.
+
+The store is scoped by execution/thread identity so that evidence from one task/thread cannot leak into another.
+
+The store supports:
+
+- storing evidence,
+- retrieving evidence by thread,
+- retaining multiple executions in one thread,
+- filtering within a thread boundary.
+
+This is a prototype storage implementation, not the final persistence technology.
+
+## 34.3 Boundary tests
+
+The evidence foundation was validated with seven tests:
+
+- evidence is emitted from tool-result processing,
+- emitted evidence matches the normalized result,
+- evidence generation does not mutate active memory,
+- evidence is stored by thread,
+- evidence is isolated between threads,
+- multiple executions are retained in one thread,
+- listing/filtering does not cross thread boundaries.
+
+All seven tests pass.
+
+This establishes the first important Prototype 3 invariant:
+
+> **Information acquired during execution can leave active memory without being lost, while remaining traceable to its execution provenance.**
+
+## 34.4 Important boundary
+
+Evidence generation is currently deterministic.
+
+The system should not ask an LLM merely to copy or persist raw execution results.
+
+LLM-based processing belongs to higher-level transformations such as:
+
+```
+Evidence
+   ↓
+Finding
+   ↓
+Understanding
+   ↓
+Knowledge
+```
+
+This keeps the evidence layer reliable and auditable.
+
+---
+
+# 35. Retrieval Architecture — R1
+
+With evidence retention established, the next architectural target is **R1: semantic retrieval**.
+
+The retrieval problem is now:
+
+> Given the current goal/information need, retrieve previously retained evidence that is semantically relevant enough to reconstruct useful working context.
+
+The retrieval system should not read directly from active memory.
+
+```
+Information Need
+      ↓
+Retrieval Query
+      ↓
+Evidence Retrieval
+      ↓
+Candidate Evidence
+      ↓
+Relevance / Ranking
+      ↓
+Context Builder
+      ↓
+Working Memory
+```
+
+## 35.1 Retrieval remains separate from context assembly
+
+Retrieval answers:
+
+> Which retained evidence is potentially relevant?
+
+Context assembly answers:
+
+> Which retrieved evidence should actually enter the model context, in what order and representation?
+
+These responsibilities remain separate.
+
+---
+
+# 36. R1 Retrieval Strategy
+
+The current working design is a **semantic-first retrieval architecture with a deterministic lexical path available as a complementary signal**, rather than introducing an LLM decision-maker to choose retrieval modes.
+
+The intended candidate flow is:
+
+```
+Query
+  │
+  ├───────────────┐
+  ▼               ▼
+Semantic Search   Lexical Search
+  │               │
+  └───────┬───────┘
+          ▼
+       RRF Fusion
+          ▼
+   Candidate Pool
+          ▼
+      Reranking
+          ▼
+   Retrieved Evidence
+```
+
+The important architectural decision is:
+
+> **Retrieval strategy selection should not itself require an LLM call.**
+
+An LLM deciding whether to use semantic or lexical retrieval would add latency, cost, and another failure surface to a component whose job should remain deterministic and measurable.
+
+The system can combine retrieval signals directly and let ranking determine relevance.
+
+---
+
+# 37. Why Semantic Retrieval Is the Primary Signal
+
+Terminal Agent questions are often expressed differently from the exact language contained in evidence.
+
+For example:
+
+```
+Query:
+"Where is runtime state reconciled?"
+
+Evidence:
+"Execution state is merged during the reconciliation stage..."
+```
+
+A semantic representation can connect these even when exact lexical overlap is limited.
+
+Semantic retrieval is therefore particularly useful for:
+
+- conceptual questions,
+- architectural understanding,
+- paraphrased questions,
+- relationships expressed in different language,
+- finding evidence that supports a broader investigation goal.
+
+However, semantic similarity alone should not be assumed to be sufficient for all codebase information.
+
+Exact identifiers, filenames, symbols, error messages, and command output often benefit from lexical matching.
+
+Therefore R1 should measure both signals rather than prematurely committing the entire system to a single retrieval mechanism.
+
+---
+
+# 38. Candidate R1 Technology
+
+The current technology candidates are:
+
+## Vector database
+
+**Qdrant** is the current prototype candidate.
+
+Reasons:
+
+- purpose-built vector retrieval,
+- metadata filtering,
+- support for payloads alongside vectors,
+- straightforward local/self-hosted deployment,
+- suitable separation between evidence storage and retrieval index.
+
+The final storage technology remains replaceable.
+
+## Embeddings
+
+**Jina Embeddings v4** is the current embedding candidate for experimentation.
+
+The embedding provider must remain behind an interface so the retrieval architecture does not become coupled to one model.
+
+Conceptually:
+
+```
+EmbeddingProvider
+       │
+       ├── Jina implementation
+       └── future implementation
+```
+
+The embedding model should therefore be treated as an implementation choice, not an architectural invariant.
+
+---
+
+# 39. Evidence Store vs Retrieval Index
+
+A critical distinction:
+
+```
+Evidence Store
+    ↓
+Source of truth
+
+Retrieval Index
+    ↓
+Derived searchable representation
+```
+
+The vector index must never become the authoritative copy of evidence.
+
+If an index is rebuilt, changed, or deleted, the underlying evidence must remain recoverable from the evidence store.
+
+Conceptually:
+
+```
+                 Evidence Store
+                  /           \
+                 /             \
+                ▼               ▼
+        Semantic Index     Lexical Index
+                \               /
+                 \             /
+                  ▼           ▼
+                    Retrieval
+```
+
+This preserves storage/retrieval separation.
+
+---
+
+# 40. Evidence Metadata for Retrieval
+
+R1 retrieval should not rely only on the embedding.
+
+Evidence should expose metadata that can constrain or improve retrieval, including where available:
+
+- thread/task scope,
+- provenance/tool name,
+- execution attempt,
+- resource references,
+- evidence type,
+- creation timestamp,
+- content,
+- structured data,
+- source identity.
+
+Metadata enables deterministic filtering before or alongside semantic ranking.
+
+Examples:
+
+```
+thread_id = current_thread
+resource = agents/terminal/...
+tool = run_terminal
+```
+
+This prevents semantically similar evidence from unrelated tasks from entering the candidate pool.
+
+---
+
+# 41. R1 Retrieval Contract
+
+The retrieval boundary should be expressed as a contract rather than coupled directly to Qdrant or another backend.
+
+Conceptually:
+
+```text
+retrieve(
+    query,
+    scope,
+    filters,
+    limit
+) -> RetrievalResult
+```
+
+The contract should allow the caller to specify:
+
+- natural-language query,
+- retrieval scope,
+- metadata filters,
+- candidate limit.
+
+The result should return evidence references plus retrieval metadata such as:
+
+- evidence ID,
+- relevance score,
+- retrieval source,
+- rank,
+- provenance.
+
+The contract should not expose vector-database-specific concepts to the rest of the Terminal Agent.
+
+---
+
+# 42. R1 Retrieval Trigger
+
+Retrieval should be triggered by an **information need**, not by every tool call.
+
+The intended control flow is:
+
+```
+Agent reasoning
+      ↓
+Information need detected
+      ↓
+Retrieval request
+      ↓
+Relevant evidence
+      ↓
+Context assembly
+```
+
+A tool execution may produce new evidence, but producing evidence does not automatically mean the system must perform another retrieval operation.
+
+This avoids unnecessary retrieval churn.
+
+Retrieval can be triggered when:
+
+- the current context is insufficient,
+- the agent needs to recall an earlier discovery,
+- the agent is about to investigate something already likely to have retained evidence,
+- the context builder needs supporting evidence,
+- a synthesis step requires historical evidence.
+
+---
+
+# 43. Retrieval Quality Requirements
+
+R1 should be evaluated experimentally rather than assumed to work because a vector database is present.
+
+The initial evaluation should measure:
+
+1. **Recall** — did relevant evidence appear?
+2. **Precision@K** — how much of the returned top-K evidence is relevant?
+3. **Ranking quality** — does the most useful evidence appear early?
+4. **Scope isolation** — does retrieval stay within the correct thread/task boundary?
+5. **Latency** — is retrieval cheap enough for iterative agent reasoning?
+6. **Context usefulness** — does retrieved evidence actually improve downstream reasoning?
+
+The final metric is especially important.
+
+A retrieval system that returns semantically similar text but does not improve the agent's ability to answer the actual task is not solving the Prototype 3 problem.
+
+---
+
+# 44. R1 Does Not Yet Include
+
+The following remain intentionally deferred:
+
+- graph retrieval,
+- multi-hop retrieval,
+- sophisticated knowledge-graph construction,
+- learned retrieval policies,
+- query planning by LLM,
+- automatic retrieval-mode selection by LLM,
+- long-term generalized agent memory,
+- advanced self-improvement,
+- automatic knowledge promotion,
+- complex contradiction resolution.
+
+These can be added only when the simpler retrieval boundary demonstrates a real need for them.
+
+---
+
+# 45. Planned Retrieval Progression
+
+The current Prototype 3 roadmap is:
+
+```
+P3-1  Evidence + Provenance          COMPLETE
+          ↓
+P3-2  R1 Retrieval Foundation        NEXT
+          ↓
+P3-3  Reranking / relevance quality
+          ↓
+P3-4  Context quality + diversity
+          ↓
+P3-5  Multi-hop / relationship-aware retrieval
+          ↓
+P3-6  Knowledge synthesis
+          ↓
+P3-7  Self-improvement
+```
+
+This is a working roadmap, not a rigid commitment.
+
+Each stage should be validated before the next layer is introduced.
+
+---
+
+# 46. Implementation Principle Added After Evidence Work
+
+A new implementation principle emerged from the first vertical slice:
+
+> **Do not make the evidence layer intelligent before making it reliable.**
+
+The system should first preserve what happened accurately.
+
+Only after reliable retention exists should the system introduce increasingly intelligent transformations.
+
+```
+Reliable evidence
+      ↓
+Reliable retrieval
+      ↓
+Useful synthesis
+      ↓
+Useful self-improvement
+```
+
+This ordering reduces the risk of building sophisticated reasoning on top of corrupted, incomplete, or untraceable information.
+
+---
+
+# 47. Updated Immediate Next Step
+
+The next implementation action is now:
+
+> **Implement R1 retrieval against the retained EvidenceRecord boundary without changing the existing runtime architecture.**
+
+The implementation should proceed in this order:
+
+1. define the retrieval contract,
+2. define the embedding/index seam,
+3. create the first retrieval index,
+4. index retained evidence,
+5. implement semantic candidate retrieval,
+6. add lexical/RRF fusion if the current design validates the need,
+7. add ranking/reranking only after candidate retrieval is measurable,
+8. test thread/scope isolation,
+9. evaluate retrieval quality,
+10. update this document with observed results.
+
+The retrieval implementation must remain replaceable and must not make the evidence store dependent on the chosen search technology.
+
+---
+
+# 48. Current Prototype 3 Status
+
+| Component | Status |
+|---|---|
+| Architecture principles | Complete |
+| Architectural requirements/invariants | Complete |
+| Evidence model | Complete |
+| Evidence provenance | Complete |
+| Runtime-processing integration | Complete |
+| In-memory evidence store | Complete |
+| Evidence boundary tests | Complete — 7/7 |
+| Retrieval contracts | Established |
+| R1 semantic retrieval design | Established |
+| Retrieval backend | Candidate: Qdrant |
+| Embedding model | Candidate: Jina Embeddings v4 |
+| RRF/lexical fusion | Planned for R1 evaluation |
+| Reranking | Later |
+| Context reconstruction | Later |
+| Knowledge synthesis | Later |
+| Self-improvement | Later |
+
+---
+
+# 49. Design Change Log — Latest
+
+| Date | Change | Reason | Status |
+|---|---|---|---|
+| Current iteration | Evidence retention implemented | Establish durable information boundary | Complete |
+| Current iteration | In-memory evidence store added | Establish thread-scoped retention seam | Complete |
+| Current iteration | Seven boundary tests passing | Validate evidence/store invariants | Complete |
+| Current iteration | Evidence generation kept deterministic | Preserve auditable source information | Accepted |
+| Current iteration | Retrieval separated from evidence storage | Keep source of truth independent from search infrastructure | Accepted |
+| Current iteration | R1 semantic retrieval defined | Enable retrieval of retained information outside active memory | Accepted |
+| Current iteration | LLM retrieval-mode selection rejected | Avoid unnecessary latency/cost and preserve deterministic retrieval behavior | Accepted |
+| Current iteration | Qdrant selected as current vector-store candidate | Prototype semantic retrieval infrastructure | Candidate |
+| Current iteration | Jina Embeddings v4 selected as current embedding candidate | Prototype semantic representation | Candidate |
+| Current iteration | RRF fusion retained as an evaluation path | Combine semantic and lexical signals without an LLM router | Planned |
+
+---
+
+# 50. Implementation Log — Iteration 1
+
+## Evidence + Provenance
+
+**Status:** Complete
+
+### Result
+
+The runtime-processing boundary now emits evidence independently of active-memory mutation.
+
+Evidence can be retained by thread and retrieved without requiring the evidence to remain in active memory.
+
+### Tests
+
+**7/7 passing.**
+
+### Architectural conclusion
+
+The evidence boundary is sufficiently stable to begin retrieval work.
+
+---
+
+## Iteration 2 — R1 Retrieval
+
+**Status:** Next
+
+### Goal
+
+Retrieve previously retained evidence using the current information need and construct a candidate set for later context assembly.
+
+### Findings
+
+_To be filled during implementation._
+
+### Design changes
+
+_To be filled during implementation._
+
+### Tests
+
+_To be filled during implementation._
+

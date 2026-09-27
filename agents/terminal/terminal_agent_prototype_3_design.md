@@ -2113,3 +2113,333 @@ _To be filled during implementation._
 
 _To be filled during implementation._
 
+
+
+---
+
+# 51. Retrieval Phases — R1 to R5
+
+The retrieval architecture is intentionally being developed in phases. Each phase should prove a specific capability before the next layer is introduced.
+
+## R1 — Retrieval Foundation
+
+**Goal:** Establish reliable retrieval over retained Evidence.
+
+Scope:
+
+- Search Document representation.
+- Embedding provider abstraction.
+- Dense semantic retrieval.
+- Lexical/BM25 retrieval.
+- Thread/scope filtering.
+- Candidate generation.
+- RRF candidate fusion.
+
+Target flow:
+
+```text
+EvidenceStore
+     ↓
+Search Representation
+     ↓
+ ┌───────────────┐
+ │               │
+ ▼               ▼
+Dense           BM25
+ │               │
+ └───────┬───────┘
+         ▼
+        RRF
+         ▼
+Candidate Evidence
+```
+
+**R1 success condition:**
+
+The Terminal Agent can retrieve relevant retained Evidence for realistic information needs without requiring an LLM to choose the retrieval mechanism.
+
+---
+
+## R2 — Precision / Reranking
+
+**Goal:** Improve ordering and precision after broad candidate generation.
+
+Scope:
+
+- Reranker interface.
+- Candidate scoring.
+- Top-K selection.
+- Retrieval evaluation against realistic Terminal Agent questions.
+
+Target flow:
+
+```text
+R1 Candidate Pool
+       ↓
+    Reranker
+       ↓
+ Ranked Evidence
+       ↓
+      Top-K
+```
+
+The reranker operates only on the relatively small R1 candidate set. It is not responsible for searching the entire Evidence corpus.
+
+**R2 success condition:**
+
+The most useful evidence consistently appears near the top of the retrieved set, with measurable improvement over the R1 ranking.
+
+---
+
+## R3 — Context Quality / Diversity
+
+**Goal:** Turn retrieved evidence into a compact, useful reasoning context.
+
+Scope:
+
+- duplicate reduction,
+- evidence diversity,
+- context budgeting,
+- ordering,
+- compression where justified,
+- preservation of provenance/resource references.
+
+Potential technique:
+
+- MMR or another diversity-selection mechanism.
+
+Target flow:
+
+```text
+Ranked Evidence
+       ↓
+Diversity / Deduplication
+       ↓
+Context Budgeting
+       ↓
+Context Builder
+       ↓
+Working Context
+```
+
+**R3 success condition:**
+
+The context contains complementary evidence rather than many near-duplicate results, while staying within the intended context budget.
+
+---
+
+## R4 — Multi-Hop / Relationship-Aware Retrieval
+
+**Goal:** Support repository questions that cannot be answered from a single retrieval pass.
+
+Scope:
+
+- iterative information needs,
+- query reformulation,
+- relationship-aware traversal,
+- follow-up retrieval,
+- dependency exploration,
+- evidence chains.
+
+Target flow:
+
+```text
+Information Need
+       ↓
+Retrieve
+       ↓
+Evidence
+       ↓
+Reason
+       ↓
+Unresolved dependency?
+   ├── No → Continue
+   └── Yes
+          ↓
+     New retrieval query
+          ↓
+       Retrieve
+          ↓
+         ...
+```
+
+Typical Terminal Agent example:
+
+```text
+"What is responsible for task execution?"
+
+        ↓
+
+retrieve executor evidence
+
+        ↓
+
+discover coordinator dependency
+
+        ↓
+
+retrieve coordinator evidence
+
+        ↓
+
+discover reconciliation
+
+        ↓
+
+retrieve reconciliation evidence
+
+        ↓
+
+build a complete understanding
+```
+
+**R4 success condition:**
+
+The agent can follow multi-step evidence chains and accumulate enough related evidence to answer repository-level questions that a single retrieval pass cannot resolve.
+
+---
+
+## R5 — Retrieval Self-Improvement
+
+**Goal:** Use Terminal Agent experience to improve retrieval quality over time.
+
+Scope:
+
+- retrieval trajectory capture,
+- successful/failed retrieval analysis,
+- missed-evidence detection,
+- query reformulation analysis,
+- ranking feedback,
+- retrieval evaluation history,
+- candidate training/evaluation datasets.
+
+Potential signal:
+
+```text
+Goal
+ ↓
+Queries issued
+ ↓
+Evidence retrieved
+ ↓
+Files/resources inspected
+ ↓
+Reasoning
+ ↓
+Successful conclusion
+```
+
+This can be analyzed to determine:
+
+- which evidence should have been retrieved earlier,
+- which retrieval results were unnecessary,
+- where semantic ranking failed,
+- where lexical retrieval was important,
+- which query formulations work well,
+- where the agent repeatedly performs redundant investigation.
+
+The long-term architecture is:
+
+```text
+Agent Trajectory
+      ↓
+Retrieval Feedback
+      ↓
+Evaluation
+      ↓
+Retrieval Improvement
+      ↓
+Future Retrieval
+```
+
+R5 is intentionally later than the base retrieval pipeline. We should not attempt retrieval-model self-training before R1–R4 are measurable.
+
+**R5 success condition:**
+
+Retrieval quality can improve from accumulated Terminal Agent experience without making self-improvement part of the critical execution path.
+
+---
+
+# 52. Retrieval Phase Dependency
+
+The intended dependency is:
+
+```text
+R1 Foundation
+      ↓
+R2 Reranking
+      ↓
+R3 Context Quality
+      ↓
+R4 Multi-Hop
+      ↓
+R5 Self-Improvement
+```
+
+A later phase may be pulled forward only when implementation evidence shows a strong dependency.
+
+The phases are **capability boundaries**, not arbitrary milestones.
+
+---
+
+# 53. Retrieval Technology Stack — Current Direction
+
+The current experimental stack is:
+
+```text
+EvidenceStore
+      ↓
+Search Document Builder
+      ↓
+Embedding Provider
+      ↓
+Dense Index
+
+EvidenceStore
+      ↓
+Search Document Builder
+      ↓
+BM25 / Sparse Index
+
+Dense + Sparse
+      ↓
+RRF
+      ↓
+Reranker
+      ↓
+Diversity / Context Builder
+```
+
+Current technology candidates:
+
+| Capability | Current candidate | Notes |
+|---|---|---|
+| Dense embeddings | Jina Embeddings v4 | Candidate only; hidden behind provider interface |
+| Dense/vector index | Qdrant | Leading candidate; replaceable |
+| Sparse retrieval | BM25 | Strong exact/code identifier baseline |
+| Candidate fusion | RRF | Initial fusion mechanism |
+| Reranking | Dedicated reranker | To be selected/evaluated in R2 |
+| Diversity | MMR | To be introduced only if evaluation justifies it |
+| Multi-hop | Agent-driven iterative retrieval | R4 |
+| Retrieval improvement | Trajectory-based feedback | R5 |
+
+These technology choices remain subject to evaluation.
+
+---
+
+# 54. Retrieval Design Invariants
+
+The following retrieval-specific invariants are now added:
+
+1. **EvidenceStore remains the authoritative source of retained information.**
+2. **Dense and sparse retrieval are complementary signals rather than mutually exclusive modes.**
+3. **No LLM call is required merely to select dense versus sparse retrieval.**
+4. **Retrieval indexes are derived state and must be rebuildable from retained Evidence.**
+5. **Search representations may differ from authoritative EvidenceRecords.**
+6. **Retrieval must remain thread/scope aware.**
+7. **Retrieval returns Evidence; Context Builder decides what enters model context.**
+8. **Reranking operates on a bounded candidate set rather than the entire Evidence corpus.**
+9. **Multi-hop retrieval is an iterative reasoning capability, not a requirement for the first retrieval implementation.**
+10. **Retrieval self-improvement must remain outside the critical execution path.**
+11. **Advanced retrieval techniques must be justified by measured failure modes.**
+

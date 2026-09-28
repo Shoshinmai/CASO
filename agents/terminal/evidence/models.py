@@ -55,7 +55,7 @@ class EvidenceRetrievalQuery(BaseModel):
     `query` represents the semantic information need.
 
     The remaining fields are deterministic constraints that can be
-    applied before semantic ranking.
+    applied before retrieval ranking.
     """
 
     query: str = Field(
@@ -72,21 +72,4 @@ class EvidenceRetrievalQuery(BaseModel):
         default=10,
         ge=1,
         le=100,
-    )
-
-
-class EvidenceRetrievalResult(BaseModel):
-    """
-    Result returned by an EvidenceRetriever.
-    """
-
-    query: EvidenceRetrievalQuery
-
-    evidence: list[EvidenceRecord] = Field(
-        default_factory=list,
-    )
-
-    total_candidates: int = Field(
-        default=0,
-        ge=0,
     )

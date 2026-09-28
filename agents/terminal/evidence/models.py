@@ -53,16 +53,14 @@ class EvidenceRetrievalQuery(BaseModel):
     Describes an information request against retained evidence.
 
     `query` represents the semantic information need.
-    The remaining fields are deterministic constraints.
+
+    The remaining fields are deterministic constraints that can be
+    applied before semantic ranking.
     """
 
     query: str = Field(
         min_length=1,
     )
-
-    task_id: str | None = None
-
-    execution_id: str | None = None
 
     resource_refs: list[str] = Field(
         default_factory=list,
@@ -88,4 +86,7 @@ class EvidenceRetrievalResult(BaseModel):
         default_factory=list,
     )
 
-    total_candidates: int = 0
+    total_candidates: int = Field(
+        default=0,
+        ge=0,
+    )

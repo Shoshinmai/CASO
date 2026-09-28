@@ -2443,3 +2443,544 @@ The following retrieval-specific invariants are now added:
 10. **Retrieval self-improvement must remain outside the critical execution path.**
 11. **Advanced retrieval techniques must be justified by measured failure modes.**
 
+
+---
+
+# 55. R1.1 — Retrieval Contract & Search Representation Design
+
+**Status:** Locked design; implementation next.
+
+R1.1 establishes the stable interfaces between retained Evidence and future retrieval implementations. It intentionally stops before introducing Qdrant, an embedding model, BM25 implementation, RRF, reranking, runtime integration, or retrieval triggering.
+
+The purpose is to make the retrieval subsystem replaceable and testable before infrastructure is introduced.
+
+## 55.1 R1.1 boundary
+
+```text
+EvidenceRecord
+      ↓
+SearchDocumentBuilder
+      ↓
+SearchDocument
+      ↓
+ ┌───────────────┐
+ │               │
+ ▼               ▼
+Dense Retrieval  Lexical Retrieval
+```
+
+R1.1 defines the contracts and representations represented by the boxes. Later subphases implement the arrows.
+
+## 55.2 Existing retrieval query
+
+The existing `EvidenceRetrievalQuery` is retained as the public information-need contract:
+
+```text
+query
+resource_refs
+tool_name
+limit
+```
+
+The query expresses:
+
+- the semantic information need,
+- optional deterministic resource constraints,
+- optional tool constraint,
+- desired result limit.
+
+It must not expose backend-specific concepts such as vector dimensions, Qdrant collections, BM25 parameters, or reranker configuration.
+
+## 55.3 RetrievedEvidence
+
+Retrieval should return ranked evidence rather than bare EvidenceRecord objects.
+
+Conceptually:
+
+```text
+RetrievedEvidence
+├── evidence
+├── score
+├── rank
+└── source
+```
+
+The `source` identifies how the result was produced, for example:
+
+- `semantic`
+- `lexical`
+- `rrf`
+- later `reranked`
+
+This makes the retrieval system observable and gives R1 measurable ranking information.
+
+## 55.4 EvidenceRetrievalResult
+
+The public retrieval result becomes:
+
+```text
+EvidenceRetrievalResult
+├── query
+├── results[]
+└── total_candidates
+```
+
+The result therefore describes both the original information request and its ranked retrieved evidence.
+
+## 55.5 SearchDocument
+
+`SearchDocument` is derived searchable state, not authoritative Evidence.
+
+Conceptually:
+
+```text
+SearchDocument
+├── document_id
+├── evidence_id
+├── text
+├── thread_id
+├── resource_refs
+├── tool_name
+└── metadata
+```
+
+The `thread_id` is included in the derived search representation so retrieval indexes can enforce the same isolation boundary as the EvidenceStore.
+
+EvidenceRecord itself does not need to duplicate this ownership information.
+
+## 55.6 SearchDocumentBuilder
+
+A dedicated builder converts an authoritative EvidenceRecord into a retrieval representation:
+
+```text
+EvidenceRecord
+      ↓
+SearchDocumentBuilder
+      ↓
+SearchDocument
+```
+
+The builder is responsible for producing contextualized searchable text and retrieval metadata.
+
+It does **not**:
+
+- generate embeddings,
+- write to an index,
+- perform retrieval,
+- mutate the EvidenceRecord.
+
+This keeps representation, indexing, and retrieval separate.
+
+## 55.7 EmbeddingProvider
+
+R1.1 defines a replaceable embedding boundary:
+
+```text
+EmbeddingProvider
+      ↓
+text(s) → vector(s)
+```
+
+The interface must not expose a specific embedding vendor or model to the rest of Terminal Agent.
+
+The current experimental candidate remains Jina Embeddings v4, but that is a technology choice rather than an architectural invariant.
+
+## 55.8 DenseIndex
+
+The dense index owns vector storage/search:
+
+```text
+SearchDocument
+      ↓
+EmbeddingProvider
+      ↓
+vector
+      ↓
+DenseIndex
+```
+
+Its interface should support:
+
+- indexing/upserting searchable documents with vectors,
+- thread-scoped vector search,
+- bounded candidate retrieval.
+
+The rest of Terminal Agent must not depend directly on Qdrant or another vector engine.
+
+## 55.9 LexicalIndex
+
+The lexical index is the complementary exact/lexical retrieval boundary.
+
+The intended first implementation is BM25.
+
+It should support:
+
+- indexing SearchDocuments,
+- thread-scoped lexical search,
+- bounded candidate retrieval.
+
+The lexical implementation remains replaceable.
+
+## 55.10 EvidenceRetriever
+
+The public retrieval abstraction hides all backend details:
+
+```text
+EvidenceRetrievalQuery
+        ↓
+EvidenceRetriever
+        ↓
+EvidenceRetrievalResult
+```
+
+The caller should not need to know whether retrieval used:
+
+- Qdrant,
+- FAISS,
+- BM25,
+- Jina,
+- another embedding model,
+- or another future implementation.
+
+## 55.11 R1.1 dependency structure
+
+```text
+                    EvidenceStore
+                         │
+                         ▼
+               SearchDocumentBuilder
+                         │
+                         ▼
+                  SearchDocument
+                    /         \
+                   /           \
+                  ▼             ▼
+          EmbeddingProvider   LexicalIndex
+                  │
+                  ▼
+              DenseIndex
+                    \         /
+                     \       /
+                      ▼     ▼
+                    Retrieval
+```
+
+R1.1 defines this dependency structure but does not yet implement candidate generation.
+
+## 55.12 R1.1 invariants
+
+1. EvidenceRecord remains the source of truth.
+2. SearchDocument is derived state.
+3. SearchDocument is retrieval-oriented and must not replace EvidenceRecord.
+4. Retrieval never mutates Evidence.
+5. Retrieval is thread/scope aware.
+6. Query models must remain backend-agnostic.
+7. Retrieval results expose rank, score, and source.
+8. Embedding providers are replaceable.
+9. Dense and lexical index implementations are replaceable.
+10. Artifact retrieval remains separate from Evidence retrieval.
+11. Context Builder decides what retrieved evidence enters model context.
+12. No runtime architecture changes are required for R1.1.
+
+---
+
+# 56. R1.1 → R1.7 Implementation Subphases
+
+R1 is divided into seven implementation subphases. Each subphase has a concrete capability boundary and should be validated before progressing.
+
+## R1.1 — Contracts & Search Representation
+
+**Goal:** Establish the stable retrieval interfaces.
+
+Scope:
+
+- `EvidenceRetrievalQuery`
+- `RetrievedEvidence`
+- `EvidenceRetrievalResult`
+- `SearchDocument`
+- `SearchDocumentBuilder`
+- `EmbeddingProvider`
+- `DenseIndex`
+- `LexicalIndex`
+- `EvidenceRetriever`
+
+No retrieval infrastructure is introduced here.
+
+**Exit condition:**
+
+All contracts can be instantiated/tested independently and contain no backend-specific dependencies.
+
+---
+
+## R1.2 — Search Representation + Embedding Seam
+
+**Goal:** Turn retained Evidence into an indexable semantic representation.
+
+Flow:
+
+```text
+EvidenceRecord
+      ↓
+SearchDocumentBuilder
+      ↓
+SearchDocument
+      ↓
+EmbeddingProvider
+      ↓
+Vector
+```
+
+Scope:
+
+- contextual searchable text generation,
+- metadata construction,
+- embedding provider implementation seam,
+- deterministic handling of empty/invalid text,
+- vector shape validation.
+
+Initial technology experiment:
+
+- Jina Embeddings v4 candidate.
+
+**Exit condition:**
+
+A retained EvidenceRecord can deterministically produce a SearchDocument and a valid embedding through the abstraction.
+
+---
+
+## R1.3 — Dense Semantic Retrieval
+
+**Goal:** Prove semantic retrieval independently.
+
+Flow:
+
+```text
+RetrievalQuery
+      ↓
+EmbeddingProvider
+      ↓
+Query Vector
+      ↓
+DenseIndex
+      ↓
+Semantic Candidates
+```
+
+Scope:
+
+- dense index implementation,
+- indexing SearchDocuments,
+- query embedding,
+- similarity search,
+- thread-scoped filtering,
+- score/rank mapping.
+
+Initial technology candidate:
+
+- Qdrant,
+- with a local/in-memory alternative available for isolated tests where useful.
+
+**Exit condition:**
+
+Relevant Evidence can be recovered by semantic similarity within the correct thread/scope.
+
+---
+
+## R1.4 — Lexical / BM25 Retrieval
+
+**Goal:** Add exact lexical retrieval for identifiers, filenames, symbols, errors, and other terms where semantic search can be weak.
+
+Flow:
+
+```text
+RetrievalQuery
+      ↓
+LexicalIndex / BM25
+      ↓
+Lexical Candidates
+```
+
+Scope:
+
+- BM25 index,
+- SearchDocument indexing,
+- thread/scope filtering,
+- lexical score/rank mapping.
+
+**Exit condition:**
+
+Exact and lexical-heavy Terminal Agent queries can retrieve relevant Evidence reliably.
+
+---
+
+## R1.5 — Candidate Fusion / RRF
+
+**Goal:** combine dense and lexical candidate sets without an LLM routing decision.
+
+Flow:
+
+```text
+Dense Candidates
+       +
+Lexical Candidates
+       ↓
+RRF
+       ↓
+Unified Candidate Ranking
+```
+
+Scope:
+
+- Reciprocal Rank Fusion,
+- duplicate evidence merging,
+- deterministic tie handling,
+- unified `RetrievedEvidence` representation.
+
+The retriever should run both candidate generators rather than asking an LLM which one to use.
+
+**Exit condition:**
+
+Hybrid retrieval improves coverage over either signal alone on the initial evaluation set.
+
+---
+
+## R1.6 — Retrieval Evaluation & Failure Analysis
+
+**Goal:** make retrieval quality measurable before adding R2 reranking.
+
+Scope:
+
+- realistic Terminal Agent retrieval questions,
+- labeled relevant Evidence,
+- Recall@K,
+- Precision@K,
+- ranking quality,
+- scope-isolation checks,
+- latency measurements,
+- redundant-result analysis,
+- failure classification.
+
+Important principle:
+
+> Do not add reranking, query rewriting, MMR, or multi-hop logic merely because those techniques exist. Add them only when R1 measurements demonstrate a concrete failure mode.
+
+**Exit condition:**
+
+We have a reproducible R1 evaluation set and can explain where the retrieval system succeeds and fails.
+
+---
+
+## R1.7 — R1 Integration Boundary
+
+**Goal:** expose the validated retrieval capability to the Terminal Agent without redesigning the existing execution runtime.
+
+Flow:
+
+```text
+Agent / Information Need
+          ↓
+EvidenceRetrievalQuery
+          ↓
+EvidenceRetriever
+          ↓
+EvidenceRetrievalResult
+```
+
+Scope:
+
+- dependency wiring,
+- retrieval service lifetime,
+- thread/scope propagation,
+- retrieval observability,
+- narrow integration seam for future Context Builder use.
+
+R1.7 should **not** implement the final retrieval trigger policy or Context Builder.
+
+Those remain higher-level responsibilities.
+
+**Exit condition:**
+
+Terminal Agent can invoke the retrieval subsystem through the stable contract and receive ranked, thread-scoped evidence without knowing the search backend.
+
+---
+
+# 57. R1 Subphase Dependency
+
+```text
+R1.1 Contracts
+      ↓
+R1.2 Search Representation
+      ↓
+R1.3 Dense Retrieval
+      ↓
+R1.4 Lexical Retrieval
+      ↓
+R1.5 RRF Fusion
+      ↓
+R1.6 Evaluation
+      ↓
+R1.7 Integration
+```
+
+R1.6 is intentionally before R2 because the system should measure the baseline before introducing a more expensive reranking stage.
+
+---
+
+# 58. R1 Technology Boundary
+
+The following are **current implementation candidates**, not permanent architectural decisions:
+
+| Layer | Current candidate | Architectural rule |
+|---|---|---|
+| Embedding model | Jina Embeddings v4 | Hidden behind EmbeddingProvider |
+| Dense index | Qdrant | Hidden behind DenseIndex |
+| Lexical retrieval | BM25 | Hidden behind LexicalIndex |
+| Fusion | RRF | Implemented independently of storage |
+| Reranking | Deferred to R2 | Must not leak into R1 contracts |
+| Diversity/MMR | Deferred to R3 | Must be justified by evaluation |
+| Multi-hop | Deferred to R4 | Higher-level iterative retrieval |
+| Self-improvement | Deferred to R5 | Outside critical retrieval path |
+
+---
+
+# 59. R1 Completion Criteria
+
+R1 is complete only when all of the following are demonstrated:
+
+1. Retained Evidence can be transformed into searchable representation.
+2. Semantic retrieval works within thread/scope boundaries.
+3. Lexical retrieval works for exact/code-oriented queries.
+4. Dense and lexical candidates can be fused deterministically.
+5. Retrieval results expose useful ranking metadata.
+6. Retrieval quality has a reproducible evaluation baseline.
+7. Terminal Agent can call retrieval through the public contract.
+8. No backend-specific concepts leak into Terminal Agent's higher-level control logic.
+9. The existing Prototype 2 execution architecture remains unchanged.
+10. Retrieval is ready to become an input to the later Context Builder.
+
+---
+
+# 60. R1.1 Implementation Checklist
+
+- [ ] Add `RetrievedEvidence`
+- [ ] Update `EvidenceRetrievalResult`
+- [ ] Add `SearchDocument`
+- [ ] Add `SearchDocumentBuilder`
+- [ ] Add `EmbeddingProvider` protocol
+- [ ] Add `DenseIndex` protocol
+- [ ] Add `LexicalIndex` protocol
+- [ ] Add `EvidenceRetriever` protocol
+- [ ] Keep EvidenceStore unchanged
+- [ ] Keep ArtifactRetriever unchanged
+- [ ] Add focused contract/model tests
+- [ ] Update this design record with implementation findings
+
+---
+
+# 61. Design Status
+
+**R1.1 is locked for implementation.**
+
+The next code change should implement only the R1.1 contracts and search representation models.
+
+No Qdrant setup, embedding model integration, BM25 implementation, RRF, runtime integration, or retrieval trigger should be introduced until the R1.1 boundary is validated.

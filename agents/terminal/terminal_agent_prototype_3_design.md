@@ -2984,3 +2984,335 @@ R1 is complete only when all of the following are demonstrated:
 The next code change should implement only the R1.1 contracts and search representation models.
 
 No Qdrant setup, embedding model integration, BM25 implementation, RRF, runtime integration, or retrieval trigger should be introduced until the R1.1 boundary is validated.
+
+
+---
+
+# 62. R1.2-A — Semantic Projection Locked
+
+**Status:** Locked.
+
+R1.2-A establishes the semantic projection from authoritative Evidence into retrieval-oriented SearchDocuments.
+
+## 62.1 Core distinction
+
+```
+EvidenceRecord
+    = authoritative observed information
+
+SearchDocument
+    = derived retrieval unit
+
+RetrievedEvidence
+    = ranked retrieval result
+```
+
+`RetrievedEvidence` must never be embedded because `score`, `rank`, and `source` describe retrieval state rather than the underlying information.
+
+## 62.2 Semantic projection
+
+The projection is deterministic for the initial Prototype 3 implementation:
+
+```
+EvidenceRecord
+      ↓
+Semantic Projection
+      ↓
+Search text + retrieval metadata
+      ↓
+SearchDocument
+```
+
+The initial searchable text should preserve:
+
+- primary evidence content,
+- resource/file/path identifiers verbatim,
+- relevant structured execution information,
+- useful terminal output/error information.
+
+The following remain metadata rather than primary semantic content:
+
+- evidence ID,
+- thread ID,
+- execution bookkeeping,
+- provenance fields used only for filtering/audit,
+- artifact references where they do not contribute semantic meaning.
+
+## 62.3 Large evidence and chunking
+
+An EvidenceRecord is the authoritative retention unit, but it is not required to be a single retrieval unit.
+
+```
+Small/coherent EvidenceRecord
+        ↓
+   one SearchDocument
+
+Large/multi-topic EvidenceRecord
+        ↓
+ multiple SearchDocuments
+```
+
+Chunking exists to avoid semantic dilution and to allow retrieval to target a relevant portion of large terminal/file/tool output.
+
+Chunking must **not** destroy the original evidence. The complete EvidenceRecord remains in EvidenceStore.
+
+Each derived chunk retains:
+
+- original `evidence_id`,
+- stable `chunk_id`,
+- `thread_id`,
+- resource references,
+- provenance metadata.
+
+Chunking thresholds and overlap strategy remain implementation/evaluation decisions rather than arbitrary fixed values.
+
+## 62.4 SearchDocument identity
+
+Derived search documents must have deterministic identity so re-indexing remains idempotent.
+
+Conceptually:
+
+```
+document_id = stable(evidence_id, chunk_id)
+```
+
+The exact identifier/hash implementation is an R1.2 implementation detail.
+
+## 62.5 Search representation rule
+
+The initial representation uses **one canonical searchable text** for both dense and lexical retrieval.
+
+We do not create separate semantic and lexical projections yet.
+
+R1.6 evaluation may justify splitting them later.
+
+## 62.6 LLM contextualization decision
+
+The initial SearchDocument projection is deterministic.
+
+No LLM is required to summarize or rewrite evidence before indexing.
+
+This preserves:
+
+- reproducibility,
+- auditability,
+- exact identifiers,
+- original evidence fidelity.
+
+An explicit semantic-enrichment stage may be added later only if evaluation demonstrates that deterministic projection is insufficient.
+
+## 62.7 R1.2-A invariants
+
+1. EvidenceRecord remains authoritative.
+2. SearchDocument is derived and rebuildable.
+3. RetrievedEvidence is never an embedding source.
+4. Exact identifiers, paths, filenames, symbols, commands, and error strings are preserved.
+5. Metadata is not blindly serialized into semantic text.
+6. Large Evidence may produce multiple SearchDocuments.
+7. All derived chunks retain the original evidence identity.
+8. SearchDocument identity is deterministic.
+9. Initial projection is deterministic and does not require an LLM.
+10. Complete source Evidence remains retained independently of search chunks.
+
+---
+
+# 63. R1.2-B — Qwen3 Embedding Provider Design
+
+**Status:** Provider selected; implementation design locked.
+
+## 63.1 Selected provider
+
+The initial free/local embedding model for Terminal Agent Prototype 3 is:
+
+```
+Qwen/Qwen3-Embedding-0.6B
+```
+
+The model is selected as an initial implementation candidate because it is open-weight, Apache-2.0 licensed, designed for retrieval workloads including code-oriented use cases, supports long inputs, and can be run locally without per-request API cost.
+
+This is a technology choice, not a permanent architecture dependency.
+
+## 63.2 Provider abstraction
+
+The provider-specific implementation remains behind the provider contract.
+
+The rest of Terminal Agent interacts with:
+
+```
+EmbeddingProvider
+      ↓
+embed_documents()
+embed_queries()
+```
+
+rather than directly importing Qwen classes.
+
+## 63.3 Query/document asymmetry
+
+Qwen3 retrieval usage distinguishes document encoding from query encoding.
+
+Therefore the provider contract should expose two explicit operations:
+
+```
+embed_documents(texts)
+embed_queries(texts)
+```
+
+Documents are encoded as searchable document text.
+
+Queries may use a configurable retrieval instruction/prefix appropriate to the embedding model.
+
+This model-specific behavior remains inside `Qwen3EmbeddingProvider`.
+
+## 63.4 Initial provider configuration
+
+The initial configuration is:
+
+| Property | Initial value |
+|---|---|
+| Model | `Qwen/Qwen3-Embedding-0.6B` |
+| Default dimension | 1024 |
+| Maximum input context | 32K tokens |
+| Execution | Local |
+| Device | Configurable |
+| Batch size | Configurable |
+| Normalization | Configurable |
+| Query instruction | Configurable |
+
+The architecture must not hard-code 1024 dimensions as a global system invariant because the model supports configurable output dimensions.
+
+## 63.5 Batch-first API
+
+Embedding APIs operate on lists:
+
+```
+embed_documents(list[str])
+embed_queries(list[str])
+```
+
+This supports efficient indexing and avoids forcing the indexing layer into one-request-per-document operation.
+
+## 63.6 Validation
+
+The provider must validate:
+
+- empty batch behavior,
+- non-empty text requirements for individual documents,
+- document/vector count alignment,
+- consistent vector dimensions within a batch,
+- invalid provider responses,
+- configured dimension compatibility.
+
+No silent truncation or vector/document mismatch is acceptable.
+
+## 63.7 Dependency choice
+
+The existing Terminal Agent environment already includes SentenceTransformers and the transformer stack.
+
+The first provider implementation may therefore use SentenceTransformers as the execution wrapper while keeping the public architecture provider-agnostic.
+
+## 63.8 R1.2-B invariants
+
+1. Qwen3 is an implementation choice, not a system-wide dependency.
+2. Document and query embedding paths remain distinct.
+3. EmbeddingProvider exposes no Qwen-specific object types.
+4. Batch processing is the default API shape.
+5. Vector count must match input count.
+6. Vector dimensionality must be consistent for an embedding-provider instance.
+7. Provider configuration owns model/device/batch/normalization/instruction details.
+8. SearchDocument and EvidenceRecord remain independent of the embedding implementation.
+9. No vector database is introduced in R1.2-B.
+
+---
+
+# 64. R1.2 Implementation Boundary
+
+R1.2 is divided into:
+
+```
+R1.2-A
+Semantic Projection
+        ↓
+R1.2-B
+Embedding Provider
+        ↓
+R1.3
+Dense Index / Semantic Retrieval
+```
+
+The intended R1.2 flow is therefore:
+
+```
+EvidenceRecord
+      ↓
+SearchDocumentBuilder
+      ↓
+SearchDocument
+      ↓
+Qwen3EmbeddingProvider
+      ↓
+Embedded representation
+```
+
+R1.2 does not search the index.
+
+R1.2 does not perform BM25 retrieval.
+
+R1.2 does not perform RRF.
+
+R1.2 does not perform reranking.
+
+R1.2 does not modify the runtime graph.
+
+---
+
+# 65. R1.2-B Technology Decision Notes
+
+The provider comparison considered:
+
+- Qwen3-Embedding-0.6B,
+- Qwen3-Embedding-4B,
+- Qwen3-Embedding-8B,
+- BGE-M3,
+- Nomic Embed v1.5,
+- Jina Embeddings v4.
+
+The current choice is Qwen3-Embedding-0.6B because Prototype 3 prioritizes:
+
+- free/local operation,
+- manageable resource requirements,
+- code-oriented retrieval suitability,
+- long input support,
+- replaceable provider architecture,
+- fast experimental iteration.
+
+Higher-capacity models remain candidates for later evaluation if R1.6 demonstrates a quality gap.
+
+---
+
+# 66. Immediate R1.2 Implementation Checklist
+
+## R1.2-A
+
+- [ ] Implement deterministic SearchDocumentBuilder
+- [ ] Preserve paths/symbols/identifiers
+- [ ] Project relevant structured execution data
+- [ ] Define large-evidence handling boundary
+- [ ] Define stable document/chunk IDs
+- [ ] Add projection tests
+
+## R1.2-B
+
+- [ ] Refine EmbeddingProvider to separate document/query embedding
+- [ ] Implement Qwen3EmbeddingProvider
+- [ ] Add provider configuration
+- [ ] Add batch embedding
+- [ ] Validate vector count
+- [ ] Validate vector dimensions
+- [ ] Handle empty input
+- [ ] Add provider tests
+- [ ] Keep index/backend integration out of R1.2
+
+## R1.2 exit condition
+
+A retained EvidenceRecord can be deterministically converted into one or more SearchDocuments and those documents can be embedded locally through the selected Qwen3 provider with validated vector output.

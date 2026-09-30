@@ -3316,3 +3316,66 @@ Higher-capacity models remain candidates for later evaluation if R1.6 demonstrat
 ## R1.2 exit condition
 
 A retained EvidenceRecord can be deterministically converted into one or more SearchDocuments and those documents can be embedded locally through the selected Qwen3 provider with validated vector output.
+
+---
+
+# 67. R1.2 Implementation Progress
+
+**Status:** Implementation complete at the unit-test boundary; real-provider smoke validation pending.
+
+The R1.2 implementation now contains:
+
+- deterministic `SearchDocument` projection,
+- stable document identity,
+- `chunk_id` support in the search representation,
+- provider-agnostic `EmbeddingProvider` with separate document/query paths,
+- `EmbeddedDocument`,
+- `Qwen3EmbeddingConfig`,
+- `Qwen3EmbeddingProvider`,
+- vector count validation,
+- vector dimension validation,
+- batch embedding,
+- empty-input handling,
+- provider error handling.
+
+The focused R1.2 tests pass, including projection and provider-contract tests.
+
+However, the unit tests inject a fake embedding model. Therefore the R1.2 exit condition is not yet considered fully demonstrated.
+
+## 67.1 Remaining R1.2 validation
+
+Before R1.3 begins, run a real local smoke test using:
+
+```
+Qwen/Qwen3-Embedding-0.6B
+```
+
+The smoke test must demonstrate:
+
+1. the model loads successfully in the current Terminal Agent environment,
+2. a SearchDocument can be embedded,
+3. a retrieval query can be embedded,
+4. document/query vector dimensions are correct and equal,
+5. batch embedding works,
+6. document/query encoding remain distinct,
+7. no unexpected dependency or device failure occurs.
+
+Only after this validation is R1.2 considered fully complete.
+
+---
+
+# 68. Immediate Next Step
+
+The next action is **R1.2 real-provider smoke validation**, not R1.3 implementation.
+
+```
+R1.2 unit boundary       COMPLETE
+        ↓
+R1.2 real Qwen smoke     ← NEXT
+        ↓
+R1.2 completion
+        ↓
+R1.3 Dense Semantic Retrieval
+```
+
+R1.3 begins only after the selected embedding provider is proven in the actual Terminal Agent environment.

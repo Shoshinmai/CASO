@@ -46,6 +46,11 @@ class SearchDocument(BaseModel):
         min_length=1,
     )
 
+    chunk_id: str = Field(
+        default="0",
+        min_length=1,
+    )
+
     text: str = Field(
         min_length=1,
     )
@@ -64,6 +69,20 @@ class SearchDocument(BaseModel):
 
     metadata: dict[str, Any] = Field(
         default_factory=dict,
+    )
+
+
+class EmbeddedDocument(BaseModel):
+    """
+    SearchDocument paired with its embedding vector.
+
+    This is derived runtime data and is not authoritative storage.
+    """
+
+    document: SearchDocument
+
+    vector: list[float] = Field(
+        min_length=1,
     )
 
 

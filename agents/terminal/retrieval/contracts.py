@@ -30,9 +30,19 @@ class SearchDocumentBuilder(Protocol):
 class EmbeddingProvider(Protocol):
     """
     Provider-agnostic embedding boundary.
+
+    Query and document embeddings are intentionally separate because
+    retrieval models may use different encoding instructions/prompts
+    for the two roles.
     """
 
-    async def embed(
+    async def embed_documents(
+        self,
+        texts: list[str],
+    ) -> list[list[float]]:
+        ...
+
+    async def embed_queries(
         self,
         texts: list[str],
     ) -> list[list[float]]:

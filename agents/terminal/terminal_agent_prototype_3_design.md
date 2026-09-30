@@ -3379,3 +3379,146 @@ R1.3 Dense Semantic Retrieval
 ```
 
 R1.3 begins only after the selected embedding provider is proven in the actual Terminal Agent environment.
+
+---
+
+# 69. R1.2 Completion — Real Provider Validation
+
+**Status:** COMPLETE
+
+R1.2 is now validated end-to-end at the embedding-provider boundary.
+
+## 69.1 Real-provider smoke validation
+
+The selected local provider was tested using:
+
+```
+Ollama
+  ↓
+qwen3-embedding:0.6b
+  ↓
+Qwen3EmbeddingProvider
+```
+
+The real smoke test passed:
+
+```
+1 passed in 51.32s
+```
+
+Observed semantic sanity-check scores:
+
+```
+relevant_similarity   = 0.7758466947569013
+unrelated_similarity = 0.3184739954223959
+```
+
+The relevant document therefore scored substantially higher than the unrelated document for the test query.
+
+The smoke validation demonstrated that:
+
+- Ollama is reachable from the Terminal Agent environment.
+- `qwen3-embedding:0.6b` loads and serves embeddings successfully.
+- SearchDocument text can be embedded through the provider.
+- Query text can be embedded through the provider.
+- Document and query vectors have the configured dimension.
+- Batch embedding works.
+- The provider produces finite normalized vectors.
+- The semantic sanity check distinguishes a relevant document from an unrelated document.
+
+## 69.2 R1.2 final status
+
+The R1.2 implementation and validation boundary is now:
+
+```
+EvidenceRecord
+      ↓
+DeterministicSearchDocumentBuilder
+      ↓
+SearchDocument
+      ↓
+Qwen3EmbeddingProvider
+      ↓
+Ollama / qwen3-embedding:0.6b
+      ↓
+Validated embedding vector
+```
+
+R1.2 is therefore considered complete.
+
+---
+
+# 70. R1.3 — Dense Semantic Retrieval
+
+**Status:** NEXT
+
+R1.3 starts from the validated embedding boundary and introduces the first actual dense retrieval implementation.
+
+Target flow:
+
+```
+SearchDocument
+      ↓
+Qwen3EmbeddingProvider
+      ↓
+Vector
+      ↓
+DenseIndex
+      ↓
+Similarity Search
+      ↓
+RetrievedEvidence
+```
+
+R1.3 should introduce only:
+
+- dense index implementation,
+- document/vector upsert,
+- query embedding,
+- similarity search,
+- thread-scoped filtering,
+- score/rank mapping,
+- focused retrieval tests.
+
+R1.3 should not yet introduce:
+
+- BM25,
+- RRF,
+- reranking,
+- MMR,
+- multi-hop retrieval,
+- retrieval-trigger policy,
+- Context Builder integration.
+
+## 70.1 R1.3 implementation principle
+
+The first dense retrieval implementation must validate the retrieval architecture independently of lexical search and reranking.
+
+The central question is:
+
+> Can the Terminal Agent retrieve the correct retained Evidence from a bounded thread using semantic similarity?
+
+Only after that boundary is measured should lexical retrieval and hybrid fusion be added.
+
+---
+
+# 71. Retrieval Progress Status
+
+```
+R1.1 Contracts & Representation       COMPLETE
+R1.2 Projection + Embedding           COMPLETE
+R1.3 Dense Semantic Retrieval         NEXT
+R1.4 Lexical / BM25                   PLANNED
+R1.5 RRF Fusion                       PLANNED
+R1.6 Evaluation                       PLANNED
+R1.7 Integration                      PLANNED
+```
+
+The selected embedding provider for the current prototype is:
+
+```
+Qwen/Qwen3-Embedding-0.6B
+served locally through Ollama
+```
+
+This remains replaceable behind `EmbeddingProvider`.

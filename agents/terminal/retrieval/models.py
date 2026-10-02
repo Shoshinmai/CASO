@@ -7,6 +7,23 @@ from agents.terminal.evidence.models import (
     EvidenceRetrievalQuery,
 )
 
+class DenseSearchHit(BaseModel):
+    """
+    Index-level result produced by dense semantic search.
+
+    This model intentionally contains only information owned by the
+    dense index. Authoritative EvidenceRecord resolution happens later.
+    """
+
+    document_id: str = Field(
+        min_length=1,
+    )
+
+    score: float
+
+    rank: int = Field(
+        ge=1,
+    )
 
 class RetrievedEvidence(BaseModel):
     """

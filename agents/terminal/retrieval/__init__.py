@@ -11,6 +11,7 @@ from .embedding import (
     Qwen3EmbeddingProvider,
 )
 from .models import (
+    DenseSearchHit,
     EmbeddedDocument,
     EvidenceRetrievalResult,
     RetrievedEvidence,
@@ -22,8 +23,10 @@ from .search_document import (
 
 __all__ = [
     "DenseIndex",
+    "DenseSearchHit",
     "EmbeddingProvider",
     "EmbeddingProviderError",
+    "EmbeddedDocument",
     "EvidenceRetriever",
     "EvidenceRetrievalResult",
     "LexicalIndex",
@@ -32,6 +35,5 @@ __all__ = [
     "RetrievedEvidence",
     "SearchDocument",
     "SearchDocumentBuilder",
-    "EmbeddedDocument",
     "DeterministicSearchDocumentBuilder",
 ]

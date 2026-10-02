@@ -6,6 +6,7 @@ from agents.terminal.evidence.models import (
 )
 
 from .models import (
+    DenseSearchHit,
     EvidenceRetrievalResult,
     RetrievedEvidence,
     SearchDocument,
@@ -23,8 +24,7 @@ class SearchDocumentBuilder(Protocol):
         *,
         thread_id: str,
         evidence: EvidenceRecord,
-    ) -> SearchDocument:
-        ...
+    ) -> SearchDocument: ...
 
 
 class EmbeddingProvider(Protocol):
@@ -39,14 +39,12 @@ class EmbeddingProvider(Protocol):
     async def embed_documents(
         self,
         texts: list[str],
-    ) -> list[list[float]]:
-        ...
+    ) -> list[list[float]]: ...
 
     async def embed_queries(
         self,
         texts: list[str],
-    ) -> list[list[float]]:
-        ...
+    ) -> list[list[float]]: ...
 
 
 class DenseIndex(Protocol):
@@ -59,8 +57,7 @@ class DenseIndex(Protocol):
         *,
         documents: list[SearchDocument],
         vectors: list[list[float]],
-    ) -> None:
-        ...
+    ) -> None: ...
 
     async def search(
         self,
@@ -68,8 +65,7 @@ class DenseIndex(Protocol):
         thread_id: str,
         query_vector: list[float],
         limit: int,
-    ) -> list[RetrievedEvidence]:
-        ...
+    ) -> list[DenseSearchHit]: ...
 
 
 class LexicalIndex(Protocol):
@@ -83,8 +79,7 @@ class LexicalIndex(Protocol):
         self,
         *,
         documents: list[SearchDocument],
-    ) -> None:
-        ...
+    ) -> None: ...
 
     async def search(
         self,
@@ -92,8 +87,7 @@ class LexicalIndex(Protocol):
         thread_id: str,
         query: str,
         limit: int,
-    ) -> list[RetrievedEvidence]:
-        ...
+    ) -> list[RetrievedEvidence]: ...
 
 
 class EvidenceRetriever(Protocol):
@@ -109,5 +103,4 @@ class EvidenceRetriever(Protocol):
         *,
         thread_id: str,
         query: EvidenceRetrievalQuery,
-    ) -> EvidenceRetrievalResult:
-        ...
+    ) -> EvidenceRetrievalResult: ...

@@ -3522,3 +3522,183 @@ served locally through Ollama
 ```
 
 This remains replaceable behind `EmbeddingProvider`.
+
+---
+
+# 71. R1.3 — Dense Semantic Retrieval Design
+
+**Status:** Design locked; implementation starts with R1.3-A/B.
+
+R1.3 introduces the first actual semantic retrieval capability using the validated R1.2 embedding boundary.
+
+## 71.1 Core question
+
+Can the Terminal Agent retrieve the correct retained Evidence from a bounded thread using dense semantic similarity?
+
+R1.3 deliberately stops before lexical retrieval, fusion, reranking, diversity selection, multi-hop retrieval, retrieval-trigger policy, and Context Builder integration.
+
+## 71.2 Correct dependency boundary
+
+EvidenceStore → SearchDocumentBuilder → SearchDocument → EmbeddingProvider → DenseIndex → DenseSearchHit[] → DenseSemanticRetriever → EvidenceStore.get() → RetrievedEvidence[] → EvidenceRetrievalResult
+
+The DenseIndex must return index-level search hits, not RetrievedEvidence. RetrievedEvidence is a public retrieval result; EvidenceStore remains the authoritative source of EvidenceRecord objects.
+
+## 71.3 DenseSearchHit
+
+R1.3 introduces an index-level result containing:
+
+- document_id
+- score
+- rank
+
+The DenseIndex knows only searchable document identity and ranking information. It does not own authoritative EvidenceRecord instances.
+
+## 71.4 DenseIndex responsibility
+
+DenseIndex supports:
+
+- upserting SearchDocuments with vectors,
+- thread-scoped semantic search,
+- bounded candidate retrieval.
+
+DenseIndex does not:
+
+- access EvidenceStore,
+- construct RetrievedEvidence,
+- perform higher-level relevance decisions,
+- perform reranking,
+- perform lexical retrieval.
+
+## 71.5 Dense indexing lifecycle
+
+EvidenceRecord → SearchDocumentBuilder → SearchDocument → EmbeddingProvider.embed_documents() → DenseIndex.upsert()
+
+Indexing is derived from authoritative Evidence. If indexing fails, retained Evidence remains intact.
+
+## 71.6 Dense query lifecycle
+
+EvidenceRetrievalQuery → EmbeddingProvider.embed_queries() → query vector → DenseIndex.search() → DenseSearchHit[] → EvidenceStore.get() → RetrievedEvidence[] → EvidenceRetrievalResult
+
+The DenseSemanticRetriever resolves search hits back to authoritative Evidence.
+
+## 71.7 Thread isolation
+
+Thread scope is enforced at the DenseIndex boundary. A query for thread A must search only vectors belonging to thread A rather than searching all vectors and filtering after ranking.
+
+## 71.8 Similarity
+
+R1.3 initially uses cosine similarity. The R1.2 provider is configured for normalized vectors, making cosine similarity appropriate for the initial implementation.
+
+No hard relevance threshold is introduced in R1.3. Score thresholds are deferred until R1.6 provides evidence about real score distributions.
+
+## 71.9 Top-K
+
+The public query exposes limit. R1.3 initially uses that limit for dense candidate retrieval. Later R2 reranking may introduce a larger candidate pool, but R1.3 does not need that complexity yet.
+
+## 71.10 Chunk handling
+
+Search operates at SearchDocument level. If one EvidenceRecord later produces multiple chunks, R1.3 does not collapse them by evidence_id. Deduplication and diversity are deferred to R3.
+
+## 71.11 Evidence resolution
+
+DenseSearchHit identifies a stable document_id. The retriever resolves that document to its evidence_id and fetches the authoritative EvidenceRecord from EvidenceStore.
+
+If an index hit cannot be resolved to retained Evidence, the system must surface an explicit index-consistency problem rather than fabricate RetrievedEvidence.
+
+## 71.12 Dense backend
+
+The initial backend candidate is Qdrant in local/self-hosted mode.
+
+Qdrant-specific types must remain inside the DenseIndex implementation. The current collection direction is terminal_agent_evidence, with thread_id stored as searchable metadata rather than one collection per thread.
+
+## 71.13 Source-of-truth invariant
+
+EvidenceStore is authoritative. DenseIndex is derived state.
+
+EvidenceStore healthy + DenseIndex unavailable means Evidence remains retained while retrieval may be unavailable.
+
+DenseIndex hit + EvidenceStore missing means an orphaned search result and must be observable as an index-consistency failure.
+
+---
+
+# 72. R1.3 Implementation Subphases
+
+## R1.3-A — DenseIndex Contract Correction
+
+Change the contract from DenseIndex returning RetrievedEvidence to DenseIndex returning DenseSearchHit.
+
+Exit condition: DenseIndex depends only on search-document/index abstractions and has no EvidenceStore dependency.
+
+## R1.3-B — DenseSearchHit Model
+
+Add document_id, score, and rank with rank validation.
+
+Exit condition: the model is usable by DenseIndex without importing EvidenceStore.
+
+## R1.3-C — Qdrant Dense Index
+
+Implement local Qdrant initialization, collection creation, vector upsert, payload construction, thread filtering, and cosine similarity search.
+
+Exit condition: SearchDocuments can be written and semantically searched within a thread.
+
+## R1.3-D — DenseIndexer Write Path
+
+Implement the orchestration from EvidenceRecord to SearchDocument to embedding to DenseIndex.upsert().
+
+Exit condition: retained Evidence can be indexed through one deterministic write path.
+
+## R1.3-E — DenseSemanticRetriever
+
+Implement query embedding, DenseIndex search, hit resolution, EvidenceStore lookup, and RetrievedEvidence construction.
+
+Exit condition: the public EvidenceRetriever contract returns ranked authoritative Evidence from dense hits.
+
+## R1.3-F — Thread/Scope Filtering
+
+Prove that semantic search cannot cross thread boundaries.
+
+Exit condition: cross-thread leakage is absent through the normal DenseIndex path.
+
+## R1.3-G — Evidence Resolution & Consistency
+
+Validate successful hit resolution and explicit handling of orphaned index results.
+
+Exit condition: the source-of-truth boundary is preserved under normal and failure conditions.
+
+## R1.3-H — Dense Retrieval Tests
+
+Cover upsert/search, semantic relevance, ranking, limit, thread isolation, evidence resolution, orphan detection, and index-failure preservation of Evidence.
+
+Exit condition: R1.3 dense retrieval behavior is reproducible and measurable.
+
+---
+
+# 73. R1.3 Non-Goals
+
+R1.3 does not include BM25, RRF, reranking, MMR, context compression, query rewriting, LLM retrieval routing, multi-hop retrieval, automatic retrieval triggers, or runtime graph modification.
+
+---
+
+# 74. R1.3 Invariants
+
+1. DenseIndex never returns authoritative EvidenceRecord objects.
+2. DenseIndex returns only index-level search hits.
+3. EvidenceStore remains the source of truth.
+4. DenseIndex is derived state.
+5. Dense retrieval is thread/scope aware.
+6. No arbitrary relevance threshold is introduced in R1.3.
+7. Similarity scores remain observable.
+8. Evidence resolution happens after index search.
+9. Missing Evidence for a search hit is an explicit consistency problem.
+10. Index failure never deletes or mutates retained Evidence.
+11. Qdrant-specific types do not leak outside the DenseIndex implementation.
+12. R1.3 operates at SearchDocument level; chunk deduplication is deferred.
+13. The existing Prototype 2 runtime architecture remains unchanged.
+
+---
+
+# 75. Immediate R1.3 Work Order
+
+R1.3-A → R1.3-B → R1.3-C → R1.3-D → R1.3-E → R1.3-F → R1.3-G → R1.3-H
+
+The first coding patch contains only R1.3-A and R1.3-B.

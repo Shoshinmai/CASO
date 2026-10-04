@@ -1757,7 +1757,7 @@ The current technology candidates are:
 
 ## Vector database
 
-**Qdrant** is the current prototype candidate.
+**LanceDB** is the current prototype candidate.
 
 Reasons:
 
@@ -3609,7 +3609,7 @@ If an index hit cannot be resolved to retained Evidence, the system must surface
 
 The initial backend candidate is Qdrant in local/self-hosted mode.
 
-Qdrant-specific types must remain inside the DenseIndex implementation. The current collection direction is terminal_agent_evidence, with thread_id stored as searchable metadata rather than one collection per thread.
+LanceDB-specific types must remain inside the DenseIndex implementation. The current table direction is terminal_agent_evidence, with thread_id stored as searchable metadata rather than one table per thread.
 
 ## 71.13 Source-of-truth invariant
 
@@ -3635,9 +3635,9 @@ Add document_id, score, and rank with rank validation.
 
 Exit condition: the model is usable by DenseIndex without importing EvidenceStore.
 
-## R1.3-C — Qdrant Dense Index
+## R1.3-C — LanceDB Dense Index
 
-Implement local Qdrant initialization, collection creation, vector upsert, payload construction, thread filtering, and cosine similarity search.
+Implement local persistent LanceDB initialization, table creation, vector upsert, metadata construction, thread filtering, and cosine similarity search.
 
 Exit condition: SearchDocuments can be written and semantically searched within a thread.
 
@@ -3691,7 +3691,7 @@ R1.3 does not include BM25, RRF, reranking, MMR, context compression, query rewr
 8. Evidence resolution happens after index search.
 9. Missing Evidence for a search hit is an explicit consistency problem.
 10. Index failure never deletes or mutates retained Evidence.
-11. Qdrant-specific types do not leak outside the DenseIndex implementation.
+11. LanceDB-specific types do not leak outside the DenseIndex implementation.
 12. R1.3 operates at SearchDocument level; chunk deduplication is deferred.
 13. The existing Prototype 2 runtime architecture remains unchanged.
 

@@ -3702,3 +3702,178 @@ R1.3 does not include BM25, RRF, reranking, MMR, context compression, query rewr
 R1.3-A → R1.3-B → R1.3-C → R1.3-D → R1.3-E → R1.3-F → R1.3-G → R1.3-H
 
 The first coding patch contains only R1.3-A and R1.3-B.
+
+---
+
+# 78. R1.3-C — Storage Scope Decision
+
+**Status:** LOCKED
+
+The persistent LanceDB dense index is **repository/workspace scoped**, not PC-global.
+
+The scope hierarchy for retained task information is:
+
+```
+Repository / Workspace
+        ↓
+LanceDB Evidence Store / Retrieval Index
+        ↓
+Thread
+        ↓
+SearchDocument / Chunk
+        ↓
+Evidence
+```
+
+## 78.1 Repository/workspace-scoped Evidence
+
+Each repository/workspace receives its own persistent local LanceDB database.
+
+Conceptually:
+
+```
+Terminal Agent Storage
+│
+├── Repository A
+│   └── LanceDB
+│       └── terminal_agent_evidence
+│           ├── thread-A1
+│           └── thread-A2
+│
+├── Repository B
+│   └── LanceDB
+│       └── terminal_agent_evidence
+│           ├── thread-B1
+│           └── thread-B2
+│
+└── Repository C
+    └── LanceDB
+        └── terminal_agent_evidence
+            └── thread-C1
+```
+
+Evidence from unrelated repositories must not enter the same task-retrieval space by default.
+
+This provides a stronger boundary than `thread_id` alone because different repositories may contain identical filenames, symbols, or concepts.
+
+## 78.2 Thread isolation inside a repository
+
+Multiple threads for the same repository share that repository's LanceDB database.
+
+`thread_id` remains a mandatory retrieval-scope discriminator:
+
+```
+Repository DB
+    ↓
+thread_id filter
+    ↓
+thread-scoped semantic retrieval
+```
+
+Thus:
+
+- repository/workspace isolates the knowledge domain,
+- thread_id isolates the execution/task context inside that domain.
+
+## 78.3 Why not one PC-wide Evidence database
+
+A PC-wide Evidence database would create a single retrieval space for unrelated repositories:
+
+```
+Repo A evidence
+Repo B evidence
+Repo C evidence
+       ↓
+one global semantic space
+```
+
+This increases the risk of retrieving semantically similar but repository-irrelevant evidence.
+
+The repository boundary therefore exists before thread-level filtering.
+
+## 78.4 Global Agent Knowledge is different
+
+The future self-improvement system may use a separate PC/global knowledge store.
+
+The conceptual separation is:
+
+```
+Task / Repository Knowledge
+        ↓
+repository/workspace scoped
+
+Agent Knowledge
+        ↓
+global across repositories
+```
+
+Agent Knowledge may eventually contain:
+
+- reusable strategies,
+- successful investigation patterns,
+- tool-use lessons,
+- recovery patterns,
+- validated self-improvements.
+
+This global store is **not part of R1.3-C** and must not be mixed with repository Evidence.
+
+## 78.5 Storage-scope invariant
+
+The current Prototype 3 storage model is therefore:
+
+> **Persistent Evidence retrieval is repository/workspace scoped; thread_id provides isolation within that scope; future Agent Knowledge is separately scoped at the global agent level.**
+
+The physical storage path and stable repository/workspace identity mechanism remain implementation details for R1.3-C.
+
+---
+
+# 79. Updated R1.3-C Architecture
+
+```
+                 Repository / Workspace
+                           │
+                           ▼
+                 Persistent LanceDB
+                           │
+                  terminal_agent_evidence
+                           │
+                    thread_id filter
+                           │
+                           ▼
+                 LanceDBDenseIndex
+                           │
+                    DenseSearchHit
+                           │
+                           ▼
+               DenseSemanticRetriever
+                           │
+                    EvidenceStore
+                           │
+                           ▼
+                  RetrievedEvidence
+```
+
+Repository/workspace selection happens before task/thread retrieval.
+
+The dense index remains derived state, while authoritative Evidence remains owned by the EvidenceStore domain.
+
+---
+
+# 80. Updated R1.3 Work Order
+
+```
+R1.3-A  DenseIndex contract correction        COMPLETE
+R1.3-B  DenseSearchHit model                 COMPLETE
+R1.3-C  Persistent local LanceDB Dense Index  ← NEXT
+          └── repository/workspace scope
+          └── thread isolation
+          └── persistent table
+          └── cosine vector search
+R1.3-D  DenseIndexer
+R1.3-E  DenseSemanticRetriever
+R1.3-F  Thread/scope filtering
+R1.3-G  Evidence resolution
+R1.3-H  Dense retrieval tests
+```
+
+R1.3-C implementation must preserve the repository/workspace boundary and must not introduce a PC-global Evidence database.

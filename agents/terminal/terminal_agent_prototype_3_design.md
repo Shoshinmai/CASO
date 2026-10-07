@@ -3607,9 +3607,13 @@ If an index hit cannot be resolved to retained Evidence, the system must surface
 
 ## 71.12 Dense backend
 
-The initial backend candidate is Qdrant in local/self-hosted mode.
+The initial backend is LanceDB in persistent local/embedded mode.
 
-LanceDB-specific types must remain inside the DenseIndex implementation. The current table direction is terminal_agent_evidence, with thread_id stored as searchable metadata rather than one table per thread.
+LanceDB-specific types must remain inside the DenseIndex implementation.
+
+The current table direction is terminal_agent_evidence, with thread_id stored as searchable metadata rather than one table per thread.
+
+The persistent LanceDB database is repository/workspace scoped, with thread-level isolation inside that database.
 
 ## 71.13 Source-of-truth invariant
 
